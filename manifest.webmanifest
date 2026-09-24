@@ -1,0 +1,19 @@
+{
+  "name": "לומדים ערבית פלסטינית A1→C2",
+  "short_name": "ערבית פלסטינית",
+  "description": "מסלול מקיף ללימוד ערבית פלסטינית (اللهجة الفلسطينية) מרמה A1 עד C2 — דיבור יומיומי, האזנה ושיחות",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#047857",
+  "background_color": "#f7f9fc",
+  "icons": [
+    {"src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#047857" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ערבית פלסטינית" />
+  <meta name="description" content="לומדים ערבית פלסטינית (اللهجة الفلسطينية) מרמה A1 עד C2 — דיבור יומיומי, האזנה, שיחות ומשפטים מלאים" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="./css/app.css" />
+  <title>לומדים ערבית פלסטינית | A1→C2</title>
+</head>
+<body>
+  <div id="app" class="app">
+    <div class="boot">טוען A1…</div>
+  </div>
+
+  <nav id="bottom-nav" class="bottom-nav hidden" aria-label="ניווט ראשי">
+    <button type="button" data-route="home" class="nav-btn active">
+      <span class="nav-ico">🏠</span><span>בית</span>
+    </button>
+    <button type="button" data-route="path" class="nav-btn">
+      <span class="nav-ico">🗺️</span><span>מסלול</span>
+    </button>
+    <button type="button" data-route="conversation" class="nav-btn">
+      <span class="nav-ico">💬</span><span>שיחה</span>
+    </button>
+    <button type="button" data-route="levels" class="nav-btn">
+      <span class="nav-ico">📊</span><span>רמות</span>
+    </button>
+    <button type="button" data-route="progress" class="nav-btn">
+      <span class="nav-ico">⭐</span><span>התקדמות</span>
+    </button>
+  </nav>
+
+  <script src="./js/speech.js"></script>
+  <script src="./js/progress.js"></script>
+  <script src="./js/srs.js"></script>
+  <script src="./data/meta.js"></script>
+  <script src="./data/conversations.js"></script>
+  <script src="./data/grammar.js"></script>
+  <script src="./data/files.js"></script>
+  <script src="./data/curriculum.js"></script>
+  <script src="./js/engine.js"></script>
+  <script src="./js/conversation.js"></script>
+  <script src="./js/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js?v=1").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
