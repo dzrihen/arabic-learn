@@ -187,12 +187,32 @@
       });
     }
 
+    function successDetail(ex, detail) {
+      const showGloss = ex &&
+        (ex.type === "listen_order" || ex.type === "sentence_build" || ex.type === "translate_he_ru") &&
+        ex.he;
+      if (!showGloss) return detail || "";
+      const fragment = document.createDocumentFragment();
+      if (detail && detail.nodeType) {
+        fragment.appendChild(detail);
+      } else if (detail) {
+        // Keep target-language punctuation isolated from the RTL feedback panel.
+        fragment.appendChild(targetText(detail));
+      }
+      const gloss = el("div", "feedback-he", escapeHtml(ex.he));
+      gloss.setAttribute("dir", "rtl");
+      gloss.style.direction = "rtl";
+      gloss.style.unicodeBidi = "isolate";
+      fragment.appendChild(gloss);
+      return fragment;
+    }
+
     function succeed(detail) {
       try {
         if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], true);
       } catch (e) {}
       const exNow = exercises[idx];
-      showFeedback(true, detail || "", () => {
+      showFeedback(true, successDetail(exNow, detail), () => {
         try {
           if (exNow && exNow._srsLemma && global.RLSrs && !exNow._srsGraded) {
             RLSrs.review(exNow._srsLemma, "good");

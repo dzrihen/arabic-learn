@@ -626,6 +626,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
 .feedback.ok .fb-title { color: var(--primary-dark); }
 .feedback.bad .fb-title { color: var(--danger); }
 .feedback .fb-detail { font-size: 0.9rem; margin-bottom: 10px; color: var(--ink); }
+.feedback .feedback-he { direction: rtl; unicode-bidi: isolate; margin-top: 6px; font-size: 1rem; }
 
 /* Celebration */
 .celeb {

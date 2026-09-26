@@ -47,6 +47,38 @@
   let ready = false;
   const lessonIndex = {};
 
+  function normalizeGlossKey(value) {
+    return String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+  }
+
+  // Listen-order records historically omitted their Hebrew gloss. Build a
+  // lesson-local lookup from the paired/choice records that already contain it.
+  function attachExerciseGlosses(lesson) {
+    const exercises = lesson && lesson.exercises;
+    if (!Array.isArray(exercises)) return;
+    const glossByTarget = Object.create(null);
+    const add = (target, he) => {
+      const key = normalizeGlossKey(target);
+      if (key && he && !glossByTarget[key]) glossByTarget[key] = he;
+    };
+    exercises.forEach((ex) => {
+      if (!ex || typeof ex !== "object") return;
+      add(ex.ru, ex.he);
+      (ex.pairs || []).forEach((pair) => add(pair && pair.ru, pair && (pair.he || pair.hebrew || pair.translation)));
+      (ex.turns || []).forEach((turn) => add(turn && turn.ru, turn && (turn.he || turn.hebrew || turn.translation)));
+      (ex.choices || ex.options || []).forEach((choice) => {
+        if (choice && typeof choice === "object") add(choice.ru, choice.he || choice.hebrew || choice.translation);
+      });
+      const correct = (ex.choices || []).find((choice) => choice && choice.correct);
+      if (correct) add(ex.ru, correct.he || correct.hebrew || correct.translation);
+    });
+    exercises.forEach((ex) => {
+      if (!ex || (ex.type !== "listen_order" && ex.type !== "sentence_build" && ex.type !== "translate_he_ru") || ex.he) return;
+      const he = glossByTarget[normalizeGlossKey(ex.ru)];
+      if (he) ex.he = he;
+    });
+  }
+
   function collectFromWindow() {
     levels = [];
     Object.keys(lessonIndex).forEach((k) => delete lessonIndex[k]);
@@ -57,6 +89,7 @@
         levels.push(obj);
         (obj.units || []).forEach((u) => {
           (u.lessons || []).forEach((les) => {
+            attachExerciseGlosses(les);
             lessonIndex[les.id] = les;
           });
         });
@@ -66,6 +99,7 @@
     if (gram) {
       (gram.units || []).forEach((u) => {
         (u.lessons || []).forEach((les) => {
+          attachExerciseGlosses(les);
           lessonIndex[les.id] = les;
         });
       });

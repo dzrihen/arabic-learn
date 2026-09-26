@@ -1,5 +1,5 @@
-/* Arabic Learn v7 — network-first shell; progress lives in localStorage + cloud sync (not SW caches) */
-const CACHE_NAME = "arabic-learn-v8";
+/* Arabic Learn v9 — network-first shell; progress lives in localStorage + cloud sync (not SW caches) */
+const CACHE_NAME = "arabic-learn-v9";
 const APP_SHELL = [
   "./",
   "./index.html",
