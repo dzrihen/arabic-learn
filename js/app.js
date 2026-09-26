@@ -261,7 +261,10 @@
   function startSrsReview() {
     if (!window.RLSrs) return;
     const lesson = RLSrs.buildReviewLesson();
-    if (!lesson) return;
+    if (!lesson) {
+      window.__RL_LESSON_ACTIVE = false;
+      return;
+    }
     showNav(false);
     if (lessonRunner && lessonRunner.destroy) lessonRunner.destroy();
     appEl.innerHTML = '<div id="lesson-root"></div>';
@@ -518,6 +521,9 @@
         try {
           await RLCloudSync.pullAndRestore(code);
           alert("ההתקדמות שוחזרה מהענן. מרענן…");
+          try {
+            sessionStorage.setItem("rl_last_reload", "cloud-manual-restore");
+          } catch (e) {}
           location.reload();
         } catch (e) {
           alert("שחזור נכשל: " + (e && e.message ? e.message : e));
@@ -565,6 +571,9 @@
         try {
           await RLCloudSync.importFromFile(f);
           alert("ייבוא הצליח. מרענן…");
+          try {
+            sessionStorage.setItem("rl_last_reload", "file-import");
+          } catch (e) {}
           location.reload();
         } catch (e) {
           alert("ייבוא נכשל: " + (e && e.message ? e.message : e));
@@ -582,13 +591,52 @@
     try {
       const empty = !(RLProgress.hasProgress && RLProgress.hasProgress());
       const code = RLCloudSync.getCode();
-      if (empty && code) {
-        RLCloudSync.pullAndRestore(code)
-          .then(function () {
-            location.reload();
-          })
-          .catch(function () {});
+      if (!(empty && code)) return;
+
+      // Defer auto-pull until after first paint + 2s so «המשך» is not raced by reload.
+      let cancelled = false;
+      function lessonBusy() {
+        return !!(
+          window.__RL_LESSON_ACTIVE ||
+          (typeof continueStarting !== "undefined" && continueStarting) ||
+          lessonRunner
+        );
       }
+      function cancelIfBusy() {
+        if (lessonBusy()) cancelled = true;
+      }
+
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          setTimeout(function () {
+            cancelIfBusy();
+            if (cancelled || lessonBusy()) return;
+            RLCloudSync.pullAndRestore(code)
+              .then(function () {
+                // User may have started a lesson while the pull was in flight.
+                if (cancelled || lessonBusy()) return;
+                const nowHas = !!(RLProgress.hasProgress && RLProgress.hasProgress());
+                // Avoid pull→reload loops when cloud payload is also empty.
+                if (!nowHas) return;
+                // Still idle on home/boot only — apply restore in place (no location.reload).
+                const idleHome =
+                  !lessonBusy() && (route === "home" || route === "boot" || !route);
+                if (!idleHome) return;
+                try {
+                  if (typeof navigate === "function") {
+                    navigate("home", { force: true, reason: "cloud-restore" });
+                  }
+                } catch (err) {
+                  // Older navigate(name) — still refresh home UI without full reload.
+                  try {
+                    navigate("home");
+                  } catch (e2) {}
+                }
+              })
+              .catch(function () {});
+          }, 2000);
+        });
+      });
     } catch (e) {}
   }
 
@@ -846,6 +894,7 @@
   }
 
   async function startLesson(lessonId) {
+    window.__RL_LESSON_ACTIVE = true;
     let lesson = RLCurriculum.getLesson(lessonId);
     if (!lesson) {
       const m = String(lessonId || "").match(/^(a1|a2|b1|b2|c1|c2)/i);
@@ -857,6 +906,7 @@
           appEl.innerHTML =
             '<div class="boot"><p>טעינה נכשלה</p><button type="button" class="btn btn-primary" id="les-retry">נסה שוב</button></div>';
           qs("#les-retry").onclick = () => startLesson(lessonId);
+          window.__RL_LESSON_ACTIVE = false;
           return;
         }
         lesson = RLCurriculum.getLesson(lessonId);
@@ -873,6 +923,7 @@
       onExit() {
         if (lessonRunner && lessonRunner.destroy) lessonRunner.destroy();
         lessonRunner = null;
+        window.__RL_LESSON_ACTIVE = false;
         if (lesson.level === "GRAM") navigate("grammar");
         else navigate("path");
       },
@@ -912,22 +963,30 @@
       '<button type="button" class="btn btn-ghost" id="btn-to-path" style="margin-top:8px">חזרה למסלול</button>' +
       "</div>";
 
-    qs("#btn-to-path").onclick = () =>
+    qs("#btn-to-path").onclick = () => {
+      window.__RL_LESSON_ACTIVE = false;
       navigate(lesson.level === "GRAM" ? "grammar" : "path");
+    };
     qs("#btn-next-les").onclick = async () => {
       if (lesson.level === "GRAM") {
         const ids = RLCurriculum.grammarLessonIds();
         const idx = ids.indexOf(lesson.id);
         const nid = idx >= 0 ? ids[idx + 1] : null;
         if (nid) startLesson(nid);
-        else navigate("grammar");
+        else {
+          window.__RL_LESSON_ACTIVE = false;
+          navigate("grammar");
+        }
         return;
       }
       const nxt = RLCurriculum.findNextLesson
         ? await RLCurriculum.findNextLesson()
         : RLCurriculum.nextLesson();
       if (nxt) startLesson(nxt.id);
-      else navigate("home");
+      else {
+        window.__RL_LESSON_ACTIVE = false;
+        navigate("home");
+      }
     };
   }
 
