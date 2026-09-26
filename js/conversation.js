@@ -124,13 +124,19 @@
       thread.scrollTop = thread.scrollHeight;
     }
 
-    function advanceNpc() {
+    async function advanceNpc() {
+      // Batch consecutive NPC lines into speakTurns so they never overlap
+      // (old code fired RLSpeech.speak() in a tight loop without awaiting).
+      const npcLines = [];
       while (stepIdx < steps.length && steps[stepIdx].speaker === "npc") {
         const st = steps[stepIdx];
         stepIdx++;
         paintThread();
         updateBar();
-        RLSpeech.speak(st.ru);
+        if (st.ru) npcLines.push(st.ru);
+      }
+      if (npcLines.length) {
+        await RLSpeech.speakTurns(npcLines, 400);
       }
       if (stepIdx >= steps.length) {
         finish();

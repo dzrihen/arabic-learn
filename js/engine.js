@@ -40,6 +40,7 @@
     let mistakes = 0;
     let hearts = 5;
     let busy = false;
+    let autoPlayGen = 0;
 
     const wrap = el("div", "lesson-runner");
     container.innerHTML = "";
@@ -176,6 +177,7 @@
     }
 
     function render() {
+      autoPlayGen += 1;
       RLSpeech.stop();
       updateBar();
       updateHearts();
@@ -226,8 +228,11 @@
     }
 
     function scheduleAutoPlay(text) {
+      const gen = ++autoPlayGen;
       setTimeout(() => {
+        if (gen !== autoPlayGen) return; // superseded by newer exercise / re-render
         RLSpeech.autoPlay(text).then((r) => {
+          if (gen !== autoPlayGen) return;
           if (r && r.blocked) {
             const hint = stage.querySelector(".tts-hint");
             if (hint) {
