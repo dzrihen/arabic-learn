@@ -72,6 +72,27 @@
 
   // ——— Screens ———
 
+  function backupCardHtml() {
+    if (!window.RLCloudSync) return "";
+    return (
+      '<div class="card backup-card" id="backup-card"><h2>גיבוי התקדמות ☁️</h2>' +
+      '<p class="sub">שמרו את ההתקדמות גם אם הטלפון מנקה נתוני אתר.</p>' +
+      '<p class="sub" id="sync-status-line" style="margin-bottom:10px"></p>' +
+      '<div class="sync-code-box" id="sync-code-box" hidden>' +
+      '<div class="sub">קוד שחזור (שמרו בוואטסאפ / פתק):</div>' +
+      '<div class="sync-code" id="sync-code-text"></div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-copy-code" style="width:100%;margin-top:8px">העתק קוד</button></div>' +
+      '<button type="button" class="btn btn-primary" id="btn-enable-cloud" style="margin-top:8px">הפעל/סנכרן גיבוי ענן</button>' +
+      '<button type="button" class="btn btn-blue" id="btn-restore-cloud" style="margin-top:8px">שחזר מקוד</button>' +
+      '<div class="backup-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-export-file" style="flex:1">ייצוא</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-share-file" style="flex:1">שתף גיבוי</button>' +
+      '<label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer">ייבוא קובץ' +
+      '<input type="file" id="btn-import-file" accept="application/json,.json" hidden /></label></div>' +
+      '<p class="sub" style="margin-top:10px">אחרי «ניקוי נתוני אתר» השתמשו בקוד או בקובץ כדי לשחזר.</p></div>'
+    );
+  }
+
   async function renderHome() {
     showNav(true);
     setActiveNav("home");
@@ -127,9 +148,7 @@
       " שיעורים הושלמו</p>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="btn-path" style="margin-top:10px;width:100%">פתח מסלול</button>' +
       "</div>" +
-      (window.RLCloudSync && !(RLProgress.hasProgress && RLProgress.hasProgress())
-        ? '<div class="card" style="border:2px solid #1CB0F6"><h2>שחזור התקדמות?</h2><p class="sub">אם ניקיתם נתוני אתר — אפשר לשחזר מקוד גיבוי או מקובץ. עברו ל«התקדמות» או לחצו כאן.</p><button type="button" class="btn btn-blue" id="btn-home-restore">שחזר מקוד גיבוי</button></div>'
-        : "") +
+      backupCardHtml() +
       convHomeCard() +
       srsHomeCard() +
       grammarHomeCard() +
@@ -149,20 +168,7 @@
       "</div>";
 
 
-    const homeRestore = qs("#btn-home-restore");
-    if (homeRestore && window.RLCloudSync) {
-      homeRestore.onclick = async () => {
-        const code = prompt("הזינו את קוד הגיבוי:", RLCloudSync.getCode() || "");
-        if (!code) return;
-        try {
-          await RLCloudSync.pullAndRestore(code);
-          alert("שוחזר. מרענן…");
-          location.reload();
-        } catch (e) {
-          alert("שחזור נכשל: " + (e && e.message ? e.message : e));
-        }
-      };
-    }
+    wireBackupCard();
 
     const tipX = qs("#tip-x");
     if (tipX) {
@@ -475,7 +481,7 @@
     }
   }
 
-  function bindBackupUi() {
+  function wireBackupCard() {
     if (!window.RLCloudSync) return;
     refreshSyncStatusLine();
     const enable = qs("#btn-enable-cloud");
@@ -641,23 +647,9 @@
       '<div class="card"><h2>לפי רמה</h2>' +
       rows +
       "</div>" +
-      '<div class="card" id="backup-card"><h2>גיבוי התקדמות ☁️</h2>' +
-      '<p class="sub">«ניקוי נתוני אתר» ב־Chrome מוחק localStorage. גיבוי ענן / קובץ שורד את זה.</p>' +
-      '<p class="sub" id="sync-status-line" style="margin-bottom:10px"></p>' +
-      '<div class="sync-code-box" id="sync-code-box" hidden>' +
-      '<div class="sub">קוד שחזור (שמרו בוואטסאפ / פתק):</div>' +
-      '<div class="sync-code" id="sync-code-text"></div>' +
-      '<button type="button" class="btn btn-ghost btn-sm" id="btn-copy-code" style="width:100%;margin-top:8px">העתק קוד</button></div>' +
-      '<button type="button" class="btn btn-primary" id="btn-enable-cloud" style="margin-top:8px">הפעל / סנכרן גיבוי ענן</button>' +
-      '<button type="button" class="btn btn-blue" id="btn-restore-cloud" style="margin-top:8px">שחזר מקוד גיבוי</button>' +
-      '<div class="backup-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
-      '<button type="button" class="btn btn-ghost btn-sm" id="btn-export-file" style="flex:1">ייצוא קובץ</button>' +
-      '<button type="button" class="btn btn-ghost btn-sm" id="btn-share-file" style="flex:1">שתף גיבוי</button>' +
-      '<label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer">ייבוא קובץ' +
-      '<input type="file" id="btn-import-file" accept="application/json,.json" hidden /></label></div>' +
-      '<p class="sub" style="margin-top:10px">טיפ: אחרי עדכון אפליקציה — רענון רגיל מספיק. <strong>אל תנקו נתוני אתר</strong> אלא אם יש לכם קוד/קובץ גיבוי.</p></div>' +
+      backupCardHtml() +
       '<div class="card"><h2>טיפ</h2><p class="sub">שיעור אחד ביום ≈ כ־6 שנים לסיום A1→C2. מסלול צפוף (~2000 שיעורים), יסוד רחב, חזרות ושערי ביקורת — אל תמהרו.</p></div>';
-    bindBackupUi();
+    wireBackupCard();
   }
 
   function renderConversation() {
