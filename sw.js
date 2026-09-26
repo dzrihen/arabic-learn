@@ -1,5 +1,5 @@
-/* Arabic Learn v3 — shell-only precache; level parts + audio on demand */
-const CACHE_NAME = "arabic-learn-v3";
+/* Arabic Learn v4 — shell precache; network-first for JS/CSS/HTML so UI copy updates stick */
+const CACHE_NAME = "arabic-learn-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -36,49 +36,40 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+function isShellAsset(pathname) {
+  return /\/(js|css)\//.test(pathname) || /\.(js|css|webmanifest|html)$/.test(pathname) || pathname.endsWith("/") || pathname.endsWith("/sw.js");
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) {
-        if (/\.(js|css|webmanifest)$/.test(url.pathname)) {
-          fetch(req).then((res) => {
-            if (res && res.ok) {
-              caches.open(CACHE_NAME).then((c) => c.put(req, res.clone()));
-            }
-          }).catch(() => {});
-        }
-        return cached;
-      }
-      return fetch(req).then((res) => {
-        if (res && res.ok && (req.mode === "navigate" || isCacheable(url.pathname))) {
+  // Network-first for app shell / JS / CSS so Hebrew UI fixes land without clearing site data every time
+  if (req.mode === "navigate" || isShellAsset(url.pathname)) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.ok) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
         }
         return res;
-      }).catch(() => {
-        if (req.mode === "navigate") return caches.match("./index.html");
-        return caches.match(req);
+      }).catch(() => caches.match(req).then((c) => c || (req.mode === "navigate" ? caches.match("./index.html") : undefined)))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      if (cached) return cached;
+      return fetch(req).then((res) => {
+        if (res && res.ok && (url.pathname.includes("/data/") || url.pathname.includes("/audio/") || url.pathname.includes("/icons/"))) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+        }
+        return res;
       });
     })
   );
 });
-
-function isCacheable(pathname) {
-  const p = pathname.replace(/\/+$/, "") || "/";
-  return (
-    p.endsWith("/index.html") ||
-    p.endsWith("/manifest.webmanifest") ||
-    p.endsWith("/sw.js") ||
-    p.includes("/icons/") ||
-    p.includes("/css/") ||
-    p.includes("/js/") ||
-    p.includes("/data/") ||
-    p.includes("/audio/") ||
-    /\/data\/[abc]\d-part\d\.js$/.test(p)
-  );
-}
