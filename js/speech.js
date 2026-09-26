@@ -64,7 +64,8 @@
     else if (lang === "ar-sa" || lang === "ar-eg") s += 14;
     else if (lang.startsWith("ar")) s += 12;
     if (/google|microsoft|neural|enhanced|premium|natural/i.test(name)) s += 8;
-    if (/sana|taim|layla|rami|amany|laith|arabic|عربي|levant|jordan|lebanon|syria|palestine/i.test(name)) s += 8;
+    if (/sana|taim|layla|rami|amany|laith|arabic|عربي|levant|jordan|lebanon|syria|palestine/i.test(name)) s += 10;
+    if (/layla|rami|amany|sana/i.test(name) && /ar-lb|ar-sy|ar-jo|lebanon|syria|jordan/i.test(lang + " " + name)) s += 4;
     if (/female|woman|женщин/i.test(name)) s += 2;
     if (/male|nestor|stefanos/i.test(name)) s -= 1;
     if (/compact|online \(natural\) compact/i.test(name)) s -= 2;
@@ -87,13 +88,27 @@
     speechSynthesis.onvoiceschanged = pickVoice;
   }
 
+  /** Strip non-Arabic noise so Edge/Web TTS gets clean Levantine orthography. */
+  function normalizeForTts(text) {
+    return String(text || "")
+      .normalize("NFC")
+      .replace(/[֐-׿]+/g, " ") // Hebrew
+      .replace(/[Ͱ-Ͽἀ-῿]+/g, " ") // Greek leftovers
+      .replace(/[Ѐ-ӿ]+/g, " ") // Cyrillic leftovers
+      .replace(/[أإآٱ]/g, "ا")
+      .replace(/ى/g, "ي")
+      .replace(/ـ+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function learnerRate() {
     try {
       const s = (global.RLProgress && RLProgress.get().settings) || {};
       if (s.speechRate === "normal") return 1.0;
-      return 0.9;
+      return 0.88;
     } catch (e) {
-      return 0.9;
+      return 0.88;
     }
   }
 
@@ -246,7 +261,7 @@
         }
         if (!preferredVoice) pickVoice();
         speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(String(text));
+        const u = new SpeechSynthesisUtterance(normalizeForTts(text));
         u.lang = "ar-JO";
         u.rate = opts.rate != null ? opts.rate : learnerRate();
         u.pitch = opts.pitch != null ? opts.pitch : 1;

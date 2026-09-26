@@ -5,7 +5,7 @@ def dlg(*pairs, distractors=None):
     turns = []
     for sp, ru in pairs:
         turns.append({"speaker": "npc" if sp == "n" else "user", "ru": ru})
-    return dialogue(turns, distractors or ["Δεν ξέρω", "Επαναλάβετε", "Πού είναι;"])
+    return dialogue(turns, distractors or ["ما بعرفش", "ممكن تعيد؟", "وين؟"])
 
 def chunk_lessons(title_base_he, title_base_ru, all_phrase_rows, per=12, biases=None, tip=None, dialogues=None):
     """Split phrases into denser lessons (little overlap) for ~1800-path pacing."""
@@ -36,7 +36,7 @@ def chunk_lessons(title_base_he, title_base_ru, all_phrase_rows, per=12, biases=
                     {"speaker": "npc", "ru": chunk[2][0]},
                     {"speaker": "user", "ru": chunk[3][0]},
                 ],
-                ["Δεν ξέρω", "Βοηθήστε με", "Πόσο κάνει;"],
+                ["ما بعرفش", "ساعدوني", "قديش بسوى؟"],
             )
         specs.append((th, tr, ph, tip, dlg, bias, False))
         lesson_i += 1
@@ -71,7 +71,7 @@ def with_checkpoint(specs, every=10, pool_phrases=None, unit_label="חזרה"):
             if len(pool) >= 6:
                 out.append((
                     f"שער {unit_label} {cp_i}",
-                    f"Έλεγχος {cp_i}",
+                    f"مراجعة {cp_i}",
                     phrases(*pool),
                     "שער חזרה — חובה לעבור כדי להמשיך",
                     None,

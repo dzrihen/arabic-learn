@@ -12,7 +12,19 @@ except ImportError:
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JOBS = json.loads((ROOT / "scripts/_audio_jobs.json").read_text(encoding="utf-8"))
 VOICE = "ar-JO-SanaNeural"  # Levantine (Jordan) — closest to Palestinian
+# Alternatives considered: ar-LB-LaylaNeural, ar-SY-AmanyNeural (also Levantine; no ar-PS in Edge).
 CONCURRENCY = 8
+
+def normalize_ar(text: str) -> str:
+    import re
+    s = (text or "").strip()
+    s = s.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا")
+    s = s.replace("ى", "ي")
+    s = re.sub(r"[\u0590-\u05FF]+", " ", s)  # Hebrew
+    s = re.sub(r"[\u0370-\u03FF\u1F00-\u1FFF]+", " ", s)  # Greek
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 
 async def one(sem, job, manifest):
     path = ROOT / job["path"]
@@ -22,7 +34,7 @@ async def one(sem, job, manifest):
         return "skip"
     async with sem:
         try:
-            comm = edge_tts.Communicate(job["text"], VOICE, rate="-5%")
+            comm = edge_tts.Communicate(normalize_ar(job["text"]), VOICE, rate="-8%")
             await comm.save(str(path))
             if path.exists() and path.stat().st_size > 200:
                 manifest[job["hash"]] = job["path"]

@@ -1,5 +1,5 @@
-/* Arabic Learn v4 — shell precache; network-first for JS/CSS/HTML so UI copy updates stick */
-const CACHE_NAME = "arabic-learn-v4";
+/* Arabic Learn v5 — shell precache; network-first for JS/CSS/HTML so UI copy updates stick */
+const CACHE_NAME = "arabic-learn-v5";
 const APP_SHELL = [
   "./",
   "./index.html",

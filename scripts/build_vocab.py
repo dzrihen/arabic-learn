@@ -9,7 +9,7 @@ def add(lem, he, pos, theme, cefr):
     lem = (lem or "").strip(); he = (he or "").strip()
     if not lem or not he or lem in seen: return
     if not AR_RE.search(lem): return
-    if re.search(r"[A-Za-zА-Яа-яΑ-Ωα-ω]", lem): return
+    if re.search(r"[A-Za-zА-Яа-яΑ-Ωα-ω]", lem): return  # reject Latin/Cyrillic/Greek lemmas
     seen.add(lem); BANK.append((lem, he, pos, theme, cefr))
 
 def bulk(rows, theme, cefr, pos=None):

@@ -36,11 +36,12 @@
 
   function normalizeKey(lemma) {
     return String(lemma || "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .replace(/ς/g, "σ")
-      .replace(/[^Ͱ-Ͽἀ-῿\-]/g, "")
+      .normalize("NFC")
+      .replace(/[ً-ٰٟ]/g, "")
+      .replace(/[أإآٱ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي")
+      .replace(/[^؀-ۿݐ-ݿࢠ-ࣿ\-']/g, "")
       .trim();
   }
 

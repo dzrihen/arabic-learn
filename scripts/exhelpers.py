@@ -22,6 +22,8 @@ DISTRACTORS_RU = [
     "و", "بس", "كتير", "لسا", "فقط", "هون", "هناك",
     "هلق", "بعدين", "دايماً", "أبداً", "يمكن", "لازم", "بقدر",
     "بيت", "مدينة", "شغل", "ساعة", "يوم", "صبح", "ليل",
+    "أه", "لا", "لو سمحت", "يسلمو", "ما بعرفش", "وين؟",
+    "مش", "رح", "عم", "بدي", "تمام", "يلا",
 ]
 
 def pick_wrong(correct_he, n=3, rng=None):
@@ -157,11 +159,11 @@ def exercises_from_phrases(phrases, grammar_tip=None, include_dialogue=None, bia
             {"speaker": "npc", "ru": P(2)["ru"]},
             {"speaker": "user", "ru": P(3)["ru"]},
         ]
-        dist_d = [P(4)["ru"] if n > 4 else "Δεν ξέρω", P(5)["ru"] if n > 5 else "Πού είναι;", "Ευχαριστώ"]
+        dist_d = [P(4)["ru"] if n > 4 else "ما بعرفش", P(5)["ru"] if n > 5 else "وين؟", "يسلمو"]
         exs.append(dialogue(turns, dist_d))
 
     exs.append(listen_choice(P(4)["ru"], P(4)["he"], pick_wrong(P(4)["he"], rng=rng), P(4).get("translit")))
-    exs.append(sentence_build(P(5)["he"], P(5)["ru"], ["ναι", "όχι", "παρακαλώ"]))
+    exs.append(sentence_build(P(5)["he"], P(5)["ru"], ["أه", "لا", "لو سمحت"]))
     exs.append(speak_repeat(P(-1)["ru"], P(-1)["he"], P(-1).get("translit")))
 
     if bias == "listen":
@@ -196,7 +198,7 @@ def checkpoint_exercises(phrases, tip=None):
             {"speaker": "npc", "ru": phrases[2]["ru"]},
             {"speaker": "user", "ru": phrases[3]["ru"]},
         ]
-        exs.append(dialogue(turns, ["Δεν καταλαβαίνω", "Επαναλάβετε, παρακαλώ", "Πού είναι η έξοδος;"]))
+        exs.append(dialogue(turns, ["مش فاهم", "ممكن تعيد؟", "وين المخرج؟"]))
     for p in phrases[3:6]:
         exs.append(listen_order(p["ru"]))
     return exs[:12]
