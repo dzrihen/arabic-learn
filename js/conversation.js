@@ -17,6 +17,21 @@
       .replace(/"/g, "&quot;");
   }
 
+  const TARGET_DIR = "rtl";
+
+  function markTarget(node) {
+    node.classList.add("target-text");
+    node.setAttribute("dir", TARGET_DIR);
+    node.style.unicodeBidi = "isolate";
+    return node;
+  }
+
+  function targetText(text) {
+    const node = document.createElement("span");
+    node.textContent = text == null ? "" : String(text);
+    return markTarget(node);
+  }
+
   function normalize(s) {
     return String(s || "")
       .toLowerCase()
@@ -114,11 +129,11 @@
       for (let i = 0; i < stepIdx; i++) {
         const st = steps[i];
         if (st.speaker === "npc") {
-          thread.appendChild(el("div", "bubble a", escapeHtml(st.ru)));
+          thread.appendChild(markTarget(el("div", "bubble a", escapeHtml(st.ru))));
           if (st.he) thread.appendChild(el("div", "bubble-he", escapeHtml(st.he)));
         } else {
           const said = st._said || st.model || "";
-          thread.appendChild(el("div", "bubble b", escapeHtml(said)));
+          thread.appendChild(markTarget(el("div", "bubble b", escapeHtml(said))));
         }
       }
       thread.scrollTop = thread.scrollHeight;
@@ -168,14 +183,16 @@
 
     function showFeedback(ok, detail, model) {
       const fb = el("div", "conv-fb " + (ok ? "ok" : "bad"));
-      fb.innerHTML =
-        "<strong>" +
-        (ok ? "מעולה!" : "כמעט…") +
-        "</strong> " +
-        escapeHtml(detail || "") +
-        (model
-          ? '<div class="model-ans ru">מודל: ' + escapeHtml(model) + "</div>"
-          : "");
+      const title = document.createElement("strong");
+      title.textContent = ok ? "מעולה!" : "כמעט…";
+      fb.appendChild(title);
+      fb.appendChild(document.createTextNode(" " + (detail || "")));
+      if (model) {
+        const modelLine = el("div", "model-ans");
+        modelLine.appendChild(document.createTextNode("מודל: "));
+        modelLine.appendChild(targetText(model));
+        fb.appendChild(modelLine);
+      }
       action.appendChild(fb);
       if (model) RLSpeech.speak(model);
     }
@@ -230,7 +247,7 @@
       // pick choices
       const box = el("div", "choices");
       (st.choices || []).forEach((c) => {
-        const b = el("button", "choice ru", escapeHtml(c.ru));
+        const b = markTarget(el("button", "choice ru", escapeHtml(c.ru)));
         b.type = "button";
         b.onclick = () => {
           if (c.ok) {

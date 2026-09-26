@@ -20,6 +20,30 @@
     return n;
   }
 
+  const TARGET_DIR = "rtl";
+
+  function markTarget(node) {
+    node.classList.add("target-text");
+    node.setAttribute("dir", TARGET_DIR);
+    node.style.unicodeBidi = "isolate";
+    return node;
+  }
+
+  function targetText(text) {
+    const node = document.createElement("span");
+    node.textContent = text == null ? "" : String(text);
+    return markTarget(node);
+  }
+
+  function mixedText(...parts) {
+    const fragment = document.createDocumentFragment();
+    parts.forEach((part) => {
+      if (part && part.nodeType) fragment.appendChild(part);
+      else if (part != null) fragment.appendChild(document.createTextNode(String(part)));
+    });
+    return fragment;
+  }
+
   function showTranslit() {
     return !!(RLProgress.get().settings && RLProgress.get().settings.translit);
   }
@@ -88,7 +112,10 @@
       busy = true;
       feedback.className = "feedback show " + (ok ? "ok" : "bad");
       feedback.querySelector(".fb-title").textContent = ok ? "מעולה!" : "לא בדיוק…";
-      feedback.querySelector(".fb-detail").textContent = detail || "";
+      const detailEl = feedback.querySelector(".fb-detail");
+      detailEl.replaceChildren();
+      if (detail && detail.nodeType) detailEl.appendChild(detail);
+      else detailEl.textContent = detail || "";
       const btn = feedback.querySelector(".fb-next");
       btn.textContent = ok ? "המשך" : "ננסה שוב / המשך";
       // SRS Easy button
@@ -217,6 +244,7 @@
       btn.innerHTML = showText
         ? '<span class="tts-ico">🔊</span><span class="ru-text">' + escapeHtml(text) + "</span>"
         : '<span class="tts-ico">🔊</span><span class="tts-label">' + escapeHtml(lbl) + "</span>";
+      if (showText) markTarget(btn.querySelector(".ru-text"));
       btn.onclick = () => {
         RLSpeech.speak(text);
         btn.classList.add("playing");
@@ -274,7 +302,7 @@
           if (busy) return;
           if (c.correct) {
             b.classList.add("correct");
-            succeed(ex.ru + " = " + c.he);
+            succeed(mixedText(targetText(ex.ru), " = ", c.he));
           } else {
             b.classList.add("wrong");
             const right = ex.choices.find((x) => x.correct);
@@ -291,15 +319,15 @@
       card.appendChild(ttsButton(ex.ru, false));
       scheduleAutoPlay(ex.ru);
       const words = ex.words || ex.ru.split(/\s+/);
-      const answer = el("div", "chip-answer");
-      const bank = el("div", "chip-bank");
+      const answer = markTarget(el("div", "chip-answer"));
+      const bank = markTarget(el("div", "chip-bank"));
       const picked = [];
       const shuffled = shuffle(words.map((w, i) => ({ w, i })));
 
       function sync() {
         answer.innerHTML = "";
         picked.forEach((p, pi) => {
-          const c = el("button", "chip", escapeHtml(p.w));
+          const c = markTarget(el("button", "chip", escapeHtml(p.w)));
           c.type = "button";
           c.onclick = () => {
             picked.splice(pi, 1);
@@ -314,7 +342,7 @@
         bank.innerHTML = "";
         shuffled.forEach((item) => {
           const used = picked.some((p) => p === item);
-          const c = el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w));
+          const c = markTarget(el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w)));
           c.type = "button";
           if (!used) {
             c.onclick = () => {
@@ -338,8 +366,8 @@
         if (busy) return;
         const got = picked.map((p) => p.w).join(" ");
         const expect = words.join(" ");
-        if (got === expect || got === ex.ru) succeed(ex.ru);
-        else failAndMaybeRetry("המשפט: " + ex.ru, () => {
+        if (got === expect || got === ex.ru) succeed(targetText(ex.ru));
+        else failAndMaybeRetry(mixedText("המשפט: ", targetText(ex.ru)), () => {
           picked.length = 0;
           sync();
           rebuildBank();
@@ -358,15 +386,15 @@
         card.appendChild(ttsButton(targetSpeak, false, "השמע את המשפט"));
       }
       const distractors = ex.distractors || [];
-      const answer = el("div", "chip-answer");
-      const bank = el("div", "chip-bank");
+      const answer = markTarget(el("div", "chip-answer"));
+      const bank = markTarget(el("div", "chip-bank"));
       const pool = shuffle(words.concat(distractors).map((w, i) => ({ w, i, id: w + "_" + i })));
       const picked = [];
 
       function sync() {
         answer.innerHTML = "";
         picked.forEach((p, pi) => {
-          const c = el("button", "chip", escapeHtml(p.w));
+          const c = markTarget(el("button", "chip", escapeHtml(p.w)));
           c.type = "button";
           c.onclick = () => {
             picked.splice(pi, 1);
@@ -380,7 +408,7 @@
         bank.innerHTML = "";
         pool.forEach((item) => {
           const used = picked.some((p) => p.id === item.id);
-          const c = el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w));
+          const c = markTarget(el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w)));
           c.type = "button";
           if (!used) {
             c.onclick = () => {
@@ -405,9 +433,9 @@
         const alt = (ex.accepted || []).concat([expect, ex.ru].filter(Boolean));
         if (alt.some((a) => a === got)) {
           if (RLProgress.get().settings.sound !== false) RLSpeech.speak(ex.ru || expect);
-          succeed(ex.ru || expect);
+          succeed(targetText(ex.ru || expect));
         } else {
-          failAndMaybeRetry("המשפט: " + (ex.ru || expect), () => {
+          failAndMaybeRetry(mixedText("המשפט: ", targetText(ex.ru || expect)), () => {
             picked.length = 0;
             sync();
             rebuildBank();
@@ -445,7 +473,7 @@
         for (let i = 0; i < turns.length; i++) {
           const t = turns[i];
           if (i < step || (i === step && t.speaker !== "user")) {
-            const b = el("div", "bubble " + (t.speaker === "user" ? "b" : "a"), escapeHtml(t.ru));
+            const b = markTarget(el("div", "bubble " + (t.speaker === "user" ? "b" : "a"), escapeHtml(t.ru)));
             thread.appendChild(b);
           } else if (i === step && t.speaker === "user") {
             thread.appendChild(el("div", "bubble b pending", "…"));
@@ -492,7 +520,7 @@
           )
         );
         opts.forEach((o) => {
-          const b = el("button", "choice ru", escapeHtml(o.ru));
+          const b = markTarget(el("button", "choice ru", escapeHtml(o.ru)));
           b.type = "button";
           b.onclick = () => {
             if (busy) return;
@@ -506,7 +534,7 @@
               setTimeout(showChoices, 500);
             } else {
               b.classList.add("wrong");
-              failAndMaybeRetry("השורה: " + correct.ru, showChoices);
+              failAndMaybeRetry(mixedText("השורה: ", targetText(correct.ru)), showChoices);
             }
           };
           choicesBox.appendChild(b);
@@ -517,7 +545,7 @@
 
     function renderFillBlank(card, ex) {
       card.appendChild(el("div", "ex-prompt", "השלם את החסר"));
-      const sentence = el("div", "ru-big");
+      const sentence = markTarget(el("div", "ru-big"));
       const parts = (ex.sentence || "").split("___");
       sentence.innerHTML =
         escapeHtml(parts[0] || "") +
@@ -537,7 +565,7 @@
       opts.forEach((o) => {
         const label = typeof o === "string" ? o : o.ru;
         const ok = typeof o === "string" ? o === ex.answer : !!o.correct;
-        const b = el("button", "choice ru", escapeHtml(label));
+        const b = markTarget(el("button", "choice ru", escapeHtml(label)));
         b.type = "button";
         b.onclick = () => {
           if (busy) return;
@@ -545,10 +573,10 @@
             b.classList.add("correct");
             const full = (ex.sentence || "").replace("___", ex.answer || label);
             RLSpeech.speak(full);
-            succeed(full);
+            succeed(targetText(full));
           } else {
             b.classList.add("wrong");
-            failAndMaybeRetry("התשובה: " + ex.answer, () => render());
+            failAndMaybeRetry(mixedText("התשובה: ", targetText(ex.answer)), () => render());
           }
         };
         box.appendChild(b);
@@ -571,6 +599,7 @@
           "match-item " + (item.side === "ru" ? "ru-side" : ""),
           escapeHtml(item.text)
         );
+        if (item.side === "ru") markTarget(b);
         b.type = "button";
         b.dataset.id = item.id;
         b.dataset.side = item.side;
@@ -641,7 +670,7 @@
 
     function renderSpeak(card, ex) {
       card.appendChild(el("div", "ex-prompt", "האזן, חזור בקול, ואשר"));
-      card.appendChild(el("div", "ru-big", escapeHtml(ex.ru)));
+      card.appendChild(markTarget(el("div", "ru-big", escapeHtml(ex.ru))));
       if (ex.translit) {
         const t = translitLine(ex.translit);
         if (t) card.appendChild(t);
@@ -661,9 +690,9 @@
           mic.disabled = false;
           mic.textContent = "🎤 לחץ ודבר";
           if (res.ok && RLSpeech.looseMatch(res.transcript, ex.ru)) {
-            succeed("שמעתי: " + res.transcript);
+            succeed(mixedText("שמעתי: ", targetText(res.transcript)));
           } else if (res.ok) {
-            failAndMaybeRetry("שמעתי: " + res.transcript + " — נסה שוב או אשר ידנית", null);
+            failAndMaybeRetry(mixedText("שמעתי: ", targetText(res.transcript), " — נסה שוב או אשר ידנית"), null);
             // also show self-check
           } else {
             // fall through to self-check message
@@ -675,7 +704,7 @@
       const ok = el("button", "btn btn-primary", "✓ שמעתי / חזרתי");
       ok.onclick = () => {
         if (busy) return;
-        succeed(ex.ru);
+        succeed(targetText(ex.ru));
       };
       const again = el("button", "btn btn-ghost", "🔊 השמע שוב");
       again.onclick = () => RLSpeech.speak(ex.ru);
@@ -687,13 +716,13 @@
     function renderAlphabet(card, ex) {
       card.appendChild(el("div", "ex-prompt", ex.promptHe || "למד את האות"));
       if (ex.letter) {
-        const big = el("div", "ru-big");
+        const big = markTarget(el("div", "ru-big"));
         big.style.fontSize = "4rem";
         big.textContent = ex.letter;
         card.appendChild(big);
         if (ex.nameHe) card.appendChild(el("div", "he-prompt", escapeHtml(ex.nameHe)));
         if (ex.example) {
-          card.appendChild(el("div", "ru-big", escapeHtml(ex.example)));
+          card.appendChild(markTarget(el("div", "ru-big", escapeHtml(ex.example))));
           if (ex.exampleHe) card.appendChild(el("div", "he-prompt", escapeHtml(ex.exampleHe)));
         }
         card.appendChild(ttsButton(ex.example || ex.letter, false));
@@ -710,6 +739,8 @@
             '</span><span class="name">' +
             escapeHtml(L.nameHe || "") +
             "</span>";
+          const letter = cell.querySelector(".letter");
+          if (letter) markTarget(letter);
           cell.onclick = () => {
             grid.querySelectorAll(".alpha-cell").forEach((c) => c.classList.remove("highlight"));
             cell.classList.add("highlight");
@@ -723,7 +754,7 @@
         // which letter makes this sound / matches
         const box = el("div", "choices");
         shuffle(ex.quiz.choices.slice()).forEach((c) => {
-          const b = el("button", "choice ru", escapeHtml(c.ch || c));
+          const b = markTarget(el("button", "choice ru", escapeHtml(c.ch || c)));
           b.type = "button";
           b.onclick = () => {
             if (busy) return;
@@ -736,7 +767,7 @@
               succeed();
             } else {
               b.classList.add("wrong");
-              failAndMaybeRetry("האות: " + ex.quiz.answer, () => render());
+              failAndMaybeRetry(mixedText("האות: ", targetText(ex.quiz.answer)), () => render());
             }
           };
           box.appendChild(b);
