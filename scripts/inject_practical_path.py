@@ -74,7 +74,7 @@ def practical_exercises(rows, tip, bias="listen"):
     if not any(e.get("type") == "dialogue" for e in exs) and len(rows) >= 4:
         turns = []
         for i, (ru, he) in enumerate(rows[:4]):
-            turns.append({"speaker": "npc" if i % 2 == 0 else "user", "ru": ru})
+            turns.append({"speaker": "npc" if i % 2 == 0 else "user", "ru": ru, "he": he})
         exs.insert(min(7, len(exs)), dialogue(turns, ["بعرفش", "عيد منيح", "وين؟"], tip=tip))
     # boost listen/sentence
     if len(rows) >= 2:

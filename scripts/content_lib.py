@@ -31,10 +31,10 @@ def chunk_lessons(title_base_he, title_base_ru, all_phrase_rows, per=12, biases=
         elif lesson_i % 3 == 1 and len(chunk) >= 4:
             dlg = dialogue(
                 [
-                    {"speaker": "npc", "ru": chunk[0][0]},
-                    {"speaker": "user", "ru": chunk[1][0]},
-                    {"speaker": "npc", "ru": chunk[2][0]},
-                    {"speaker": "user", "ru": chunk[3][0]},
+                    {"speaker": "npc", "ru": chunk[0][0], "he": chunk[0][1]},
+                    {"speaker": "user", "ru": chunk[1][0], "he": chunk[1][1]},
+                    {"speaker": "npc", "ru": chunk[2][0], "he": chunk[2][1]},
+                    {"speaker": "user", "ru": chunk[3][0], "he": chunk[3][1]},
                 ],
                 ["ما بعرفش", "ساعدوني", "قديش بسوى؟"],
             )

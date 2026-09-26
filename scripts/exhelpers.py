@@ -154,10 +154,10 @@ def exercises_from_phrases(phrases, grammar_tip=None, include_dialogue=None, bia
         exs.append(include_dialogue)
     elif n >= 4 and rng.random() < 0.55:
         turns = [
-            {"speaker": "npc", "ru": P(0)["ru"]},
-            {"speaker": "user", "ru": P(1)["ru"]},
-            {"speaker": "npc", "ru": P(2)["ru"]},
-            {"speaker": "user", "ru": P(3)["ru"]},
+            {"speaker": "npc", "ru": P(0)["ru"], "he": P(0)["he"]},
+            {"speaker": "user", "ru": P(1)["ru"], "he": P(1)["he"]},
+            {"speaker": "npc", "ru": P(2)["ru"], "he": P(2)["he"]},
+            {"speaker": "user", "ru": P(3)["ru"], "he": P(3)["he"]},
         ]
         dist_d = [P(4)["ru"] if n > 4 else "ما بعرفش", P(5)["ru"] if n > 5 else "وين؟", "يسلمو"]
         exs.append(dialogue(turns, dist_d))
@@ -193,10 +193,10 @@ def checkpoint_exercises(phrases, tip=None):
         exs.append(speak_repeat(p["ru"], p["he"], p.get("translit")))
     if len(phrases) >= 4:
         turns = [
-            {"speaker": "npc", "ru": phrases[0]["ru"]},
-            {"speaker": "user", "ru": phrases[1]["ru"]},
-            {"speaker": "npc", "ru": phrases[2]["ru"]},
-            {"speaker": "user", "ru": phrases[3]["ru"]},
+            {"speaker": "npc", "ru": phrases[0]["ru"], "he": phrases[0]["he"]},
+            {"speaker": "user", "ru": phrases[1]["ru"], "he": phrases[1]["he"]},
+            {"speaker": "npc", "ru": phrases[2]["ru"], "he": phrases[2]["he"]},
+            {"speaker": "user", "ru": phrases[3]["ru"], "he": phrases[3]["he"]},
         ]
         exs.append(dialogue(turns, ["مش فاهم", "ممكن تعيد؟", "وين المخرج؟"]))
     for p in phrases[3:6]:

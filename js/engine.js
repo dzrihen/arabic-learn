@@ -462,6 +462,34 @@
     }
 
     function renderDialogue(card, ex) {
+      function dialogueTranslation(turn) {
+        const direct = turn && (turn.he || turn.hebrew || turn.translation || turn.heTranslation);
+        if (direct) return direct;
+        const candidates = []
+          .concat(ex.choices || [], ex.options || [], (turn && turn.choices) || []);
+        const match = candidates.find((choice) => choice && typeof choice === "object" && choice.ru === turn.ru);
+        if (match && match.he) return match.he;
+        const pairs = ex.pairs || ex.pairMetadata || ex.metadata || [];
+        const pair = pairs.find((item) => item && item.ru === turn.ru);
+        return pair && (pair.he || pair.translation || pair.hebrew);
+      }
+
+      function appendDialogueSummary() {
+        const summary = el("section", "dialogue-summary");
+        summary.setAttribute("aria-label", "סיכום השיחה");
+        summary.appendChild(el("h3", "dialogue-summary-title", "סיכום השיחה — תרגום לעברית"));
+        turns.forEach((turn, index) => {
+          const row = el("div", "dialogue-summary-row");
+          row.dataset.speaker = turn.speaker || "";
+          row.appendChild(el("div", "dialogue-summary-index", String(index + 1)));
+          row.appendChild(markTarget(el("div", "dialogue-summary-target", turn.ru || "")));
+          const he = dialogueTranslation(turn);
+          if (he) row.appendChild(el("div", "dialogue-summary-he", he));
+          summary.appendChild(row);
+        });
+        card.appendChild(summary);
+      }
+
       card.appendChild(el("div", "ex-prompt", "השלם את השיחה — בחר את השורה הבאה"));
       const thread = el("div", "dialogue-thread");
       card.appendChild(thread);
@@ -510,6 +538,7 @@
         if (step >= turns.length) {
           // done — play full dialogue with short pauses between turns
           RLSpeech.speakTurns(turns.map((t) => t.ru), 450);
+          appendDialogueSummary();
           succeed("שיחה מלאה ✓");
           return;
         }
