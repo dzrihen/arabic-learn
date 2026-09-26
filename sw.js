@@ -1,5 +1,5 @@
-/* Arabic Learn v2 — shell-only precache; level parts + audio on demand */
-const CACHE_NAME = "arabic-learn-v2";
+/* Arabic Learn v3 — shell-only precache; level parts + audio on demand */
+const CACHE_NAME = "arabic-learn-v3";
 const APP_SHELL = [
   "./",
   "./index.html",

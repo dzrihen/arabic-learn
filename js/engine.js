@@ -208,14 +208,15 @@
       }
     }
 
-    function ttsButton(text, showText) {
+    function ttsButton(text, showText, label) {
       const wrap = el("div", "tts-wrap");
       const btn = el("button", "tts-btn tts-replay");
       btn.type = "button";
-      btn.setAttribute("aria-label", "השמע שוב");
+      const lbl = label || "השמע שוב";
+      btn.setAttribute("aria-label", lbl);
       btn.innerHTML = showText
         ? '<span class="tts-ico">🔊</span><span class="ru-text">' + escapeHtml(text) + "</span>"
-        : '<span class="tts-ico">🔊</span><span class="tts-label">השמע שוב</span>';
+        : '<span class="tts-ico">🔊</span><span class="tts-label">' + escapeHtml(lbl) + "</span>";
       btn.onclick = () => {
         RLSpeech.speak(text);
         btn.classList.add("playing");
@@ -349,9 +350,13 @@
     }
 
     function renderSentenceBuild(card, ex) {
-      card.appendChild(el("div", "ex-prompt", "בנה את המשפט ביוונית"));
+      card.appendChild(el("div", "ex-prompt", "בנה את המשפט בערבית"));
       card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
       const words = ex.words || [];
+      const targetSpeak = ex.ru || words.join(" ");
+      if (targetSpeak) {
+        card.appendChild(ttsButton(targetSpeak, false, "השמע את המשפט"));
+      }
       const distractors = ex.distractors || [];
       const answer = el("div", "chip-answer");
       const bank = el("div", "chip-bank");
@@ -425,7 +430,7 @@
       });
       // override prompt
       const prompt = card.querySelector(".ex-prompt");
-      if (prompt) prompt.textContent = "תרגם לעברית → יוונית";
+      if (prompt) prompt.textContent = "תרגם לעברית → ערבית";
     }
 
     function renderDialogue(card, ex) {
@@ -520,6 +525,13 @@
         escapeHtml(parts[1] || "");
       card.appendChild(sentence);
       if (ex.he) card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
+      const fillTarget =
+        (ex.sentence || "").replace("___", ex.answer || "") ||
+        ex.ru ||
+        "";
+      if (fillTarget) {
+        card.appendChild(ttsButton(fillTarget, false, "השמע את המשפט"));
+      }
       const opts = shuffle((ex.options || []).slice());
       const box = el("div", "choices");
       opts.forEach((o) => {
@@ -545,7 +557,7 @@
     }
 
     function renderMatch(card, ex) {
-      card.appendChild(el("div", "ex-prompt", "התאם בין יוונית לעברית"));
+      card.appendChild(el("div", "ex-prompt", "התאם בין ערבית לעברית"));
       const pairs = (ex.pairs || []).slice();
       const left = shuffle(pairs.map((p, i) => ({ side: "ru", text: p.ru, id: i })));
       const right = shuffle(pairs.map((p, i) => ({ side: "he", text: p.he, id: i })));
@@ -567,6 +579,7 @@
           if (!selected) {
             selected = b;
             b.classList.add("selected");
+            if (item.side === "ru" && item.text) RLSpeech.speak(item.text);
             return;
           }
           if (selected === b) {

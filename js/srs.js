@@ -207,7 +207,7 @@
           words: [c.lemma],
           distractors: distractors,
           ru: c.lemma,
-          tip: "בחר את המילה ביוונית",
+          tip: "בחר את המילה בערבית",
           _srsLemma: c.lemma,
         });
       }
@@ -222,7 +222,7 @@
       id: "srs-review-" + Date.now(),
       level: "SRS",
       titleHe: "חזרה על מילים",
-      titleRu: "Повтор слов",
+      titleRu: "مراجعة الكلمات",
       xp: 12,
       exercises: exercises,
       _srs: true,

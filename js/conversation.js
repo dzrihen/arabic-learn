@@ -189,8 +189,8 @@
       const input = document.createElement("input");
       input.type = "text";
       input.className = "conv-input ru";
-      input.dir = "ltr";
-      input.placeholder = "כתוב תשובה קצרה ביוונית…";
+      input.dir = "rtl";
+      input.placeholder = "כתוב תשובה קצרה בערבית…";
       const checkBtn = el("button", "btn btn-blue btn-sm", "בדיקה");
       free.appendChild(input);
       free.appendChild(checkBtn);
