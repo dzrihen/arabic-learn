@@ -58,8 +58,33 @@
    * Run a lesson. container is the mount point.
    * callbacks: { onProgress(i,total), onComplete({xp,perfect,mistakes}), onExit() }
    */
+
+  /** Convert one listening-primary exercise to a non-listening equivalent (shallow copy). */
+  function alternateForListening(ex) {
+    const copy = Object.assign({}, ex);
+    if (copy.type === "listen_order") {
+      copy.type = "sentence_build";
+      copy.words =
+        copy.words ||
+        (copy.ru ? String(copy.ru).split(/\s+/).filter(Boolean) : []);
+      copy.promptHe = copy.he || "בנה את המשפט";
+    } else if (copy.type === "listen_choice") {
+      copy.type = "read_choice";
+    } else if (copy.type === "speak_repeat") {
+      copy.type = "translate_he_ru";
+      copy.words =
+        copy.words ||
+        (copy.ru ? String(copy.ru).split(/\s+/).filter(Boolean) : []);
+      if (!copy.he) copy.he = "תרגם לעברית → שפת היעד";
+    }
+    return copy;
+  }
+
   function runLesson(lesson, container, callbacks) {
-    const exercises = lesson.exercises || [];
+    // Shallow-copy slots so in-place skip swaps do not mutate lesson data permanently
+    let exercises = (lesson.exercises || []).map(function (ex) {
+      return Object.assign({}, ex);
+    });
     let idx = 0;
     let mistakes = 0;
     let hearts = 5;
@@ -239,6 +264,7 @@
 
       const type = ex.type;
       if (type === "listen_choice") renderListenChoice(card, ex);
+      else if (type === "read_choice") renderReadChoice(card, ex);
       else if (type === "listen_order") renderListenOrder(card, ex);
       else if (type === "sentence_build") renderSentenceBuild(card, ex);
       else if (type === "translate_he_ru") renderTranslate(card, ex);
@@ -303,12 +329,65 @@
         .replace(/"/g, "&quot;");
     }
 
+
+    function skipToAlternate() {
+      if (busy) return;
+      RLSpeech.stop();
+      const cur = exercises[idx];
+      if (!cur) return;
+      const alt = alternateForListening(cur);
+      if (alt.type === cur.type) return; // not a listening type
+      exercises[idx] = alt;
+      render();
+    }
+
+    function appendSkipAltButton(card) {
+      const row = el("div", "check-row skip-alt-row");
+      row.style.marginTop = "14px";
+      const btn = el("button", "btn btn-ghost", "דלג — תרגיל אחר");
+      btn.type = "button";
+      btn.setAttribute("aria-label", "דלג — תרגיל אחר");
+      btn.onclick = () => skipToAlternate();
+      row.appendChild(btn);
+      card.appendChild(row);
+    }
+
     // ——— Exercise renderers ———
 
     function renderListenChoice(card, ex) {
       card.appendChild(el("div", "ex-prompt", "מה שמעת? בחר את המשמעות הנכונה"));
       card.appendChild(ttsButton(ex.ru, false));
       scheduleAutoPlay(ex.ru);
+      if (ex.translit) {
+        const t = translitLine(ex.translit);
+        if (t) card.appendChild(t);
+      }
+      const choices = shuffle(ex.choices.slice());
+      const box = el("div", "choices");
+      choices.forEach((c) => {
+        const b = el("button", "choice", escapeHtml(c.he));
+        b.type = "button";
+        b.onclick = () => {
+          if (busy) return;
+          if (c.correct) {
+            b.classList.add("correct");
+            succeed(mixedText(targetText(ex.ru), " = ", c.he));
+          } else {
+            b.classList.add("wrong");
+            const right = ex.choices.find((x) => x.correct);
+            failAndMaybeRetry("התשובה: " + (right ? right.he : ""), () => render());
+          }
+        };
+        box.appendChild(b);
+      });
+      card.appendChild(box);
+      appendSkipAltButton(card);
+    }
+
+
+    function renderReadChoice(card, ex) {
+      card.appendChild(el("div", "ex-prompt", "מה המשמעות של המשפט?"));
+      card.appendChild(markTarget(el("div", "ru-big", escapeHtml(ex.ru))));
       if (ex.translit) {
         const t = translitLine(ex.translit);
         if (t) card.appendChild(t);
@@ -395,11 +474,12 @@
       };
       check.appendChild(btn);
       card.appendChild(check);
+      appendSkipAltButton(card);
     }
 
     function renderSentenceBuild(card, ex) {
-      card.appendChild(el("div", "ex-prompt", "בנה את המשפט בערבית"));
-      card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
+      card.appendChild(el("div", "ex-prompt", ex.promptHe || "בנה את המשפט בערבית"));
+      if (ex.he && ex.he !== ex.promptHe) card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
       const words = ex.words || [];
       const targetSpeak = ex.ru || words.join(" ");
       if (targetSpeak) {
@@ -760,6 +840,7 @@
       actions.appendChild(ok);
       actions.appendChild(again);
       card.appendChild(actions);
+      appendSkipAltButton(card);
     }
 
     function renderAlphabet(card, ex) {
