@@ -7,6 +7,8 @@
   const STEPS_DAYS = [1, 3, 7, 16, 35];
   const SESSION_SIZE = 15;
 
+  let saveHook = null;
+
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
@@ -21,6 +23,9 @@
   function save(state) {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {}
+    try {
+      if (typeof saveHook === "function") saveHook(state);
     } catch (e) {}
   }
 
@@ -230,6 +235,25 @@
     };
   }
 
+
+  function exportState() {
+    return { cards: state.cards || {}, seen: state.seen || {} };
+  }
+
+  function importState(data) {
+    if (!data || typeof data !== "object") throw new Error("srs invalid");
+    state = {
+      cards: data.cards && typeof data.cards === "object" ? data.cards : {},
+      seen: data.seen && typeof data.seen === "object" ? data.seen : {},
+    };
+    save(state);
+    return state;
+  }
+
+  function setSaveHook(fn) {
+    saveHook = typeof fn === "function" ? fn : null;
+  }
+
   global.RLSrs = {
     markSeen,
     markFail,
@@ -243,6 +267,9 @@
     SESSION_SIZE,
     normalizeKey,
     _state: () => state,
+    exportState,
+    importState,
+    setSaveHook,
     reload: () => {
       state = load();
     },

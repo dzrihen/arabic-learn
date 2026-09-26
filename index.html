@@ -41,6 +41,7 @@
   <script src="./js/speech.js"></script>
   <script src="./js/progress.js"></script>
   <script src="./js/srs.js"></script>
+  <script src="./js/cloud-sync.js"></script>
   <script src="./data/meta.js"></script>
   <script src="./data/conversations.js"></script>
   <script src="./data/grammar.js"></script>
@@ -52,7 +53,7 @@
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js?v=5").catch(() => {});
+        navigator.serviceWorker.register("./sw.js?v=6").catch(() => {});
       });
     }
   </script>

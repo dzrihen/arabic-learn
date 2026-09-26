@@ -1,4 +1,4 @@
-/* Progress, XP, streak, unlocks — localStorage */
+/* Progress, XP, streak, unlocks — localStorage + cloud/file backup hooks */
 (function (global) {
   "use strict";
 
@@ -14,6 +14,8 @@
     settings: { translit: true, sound: true, speechRate: "slow" },
     installTipDismissed: false,
   };
+
+  let saveHook = null;
 
   function todayStr() {
     const d = new Date();
@@ -48,6 +50,9 @@
   function save(data) {
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
+    } catch (e) {}
+    try {
+      if (typeof saveHook === "function") saveHook(data);
     } catch (e) {}
   }
 
@@ -152,9 +157,27 @@
     return JSON.stringify(state);
   }
 
+  function importState(data) {
+    if (!data || typeof data !== "object") throw new Error("progress invalid");
+    const next = Object.assign({}, DEFAULTS, data);
+    next.settings = Object.assign({}, DEFAULTS.settings, data.settings || {});
+    next.completed = data.completed && typeof data.completed === "object" ? data.completed : {};
+    state = next;
+    save(state);
+    return state;
+  }
+
   function resetAll() {
     state = JSON.parse(JSON.stringify(DEFAULTS));
     save(state);
+  }
+
+  function setSaveHook(fn) {
+    saveHook = typeof fn === "function" ? fn : null;
+  }
+
+  function hasProgress() {
+    return Object.keys(state.completed || {}).length > 0 || (state.xp || 0) > 0;
   }
 
   global.RLProgress = {
@@ -173,6 +196,10 @@
     lessonStatus,
     countCompleted,
     exportState,
+    importState,
     resetAll,
+    setSaveHook,
+    hasProgress,
+    KEY,
   };
 })(window);

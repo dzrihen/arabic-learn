@@ -13,6 +13,8 @@
 
   const appEl = document.getElementById("app");
   const navEl = document.getElementById("bottom-nav");
+  const APP_SYNC_ID = "arabic-learn";
+  const APP_FILE_PREFIX = "arabic-learn";
   let route = "home";
   let activeLevel = null;
   let lessonRunner = null;
@@ -125,6 +127,9 @@
       " שיעורים הושלמו</p>" +
       '<button type="button" class="btn btn-ghost btn-sm" id="btn-path" style="margin-top:10px;width:100%">פתח מסלול</button>' +
       "</div>" +
+      (window.RLCloudSync && !(RLProgress.hasProgress && RLProgress.hasProgress())
+        ? '<div class="card" style="border:2px solid #1CB0F6"><h2>שחזור התקדמות?</h2><p class="sub">אם ניקיתם נתוני אתר — אפשר לשחזר מקוד גיבוי או מקובץ. עברו ל«התקדמות» או לחצו כאן.</p><button type="button" class="btn btn-blue" id="btn-home-restore">שחזר מקוד גיבוי</button></div>'
+        : "") +
       convHomeCard() +
       srsHomeCard() +
       grammarHomeCard() +
@@ -142,6 +147,22 @@
       (p.settings.speechRate !== "normal" ? " on" : "") +
       '" id="tog-slow" aria-label="קצב דיבור"></button></div>' +
       "</div>";
+
+
+    const homeRestore = qs("#btn-home-restore");
+    if (homeRestore && window.RLCloudSync) {
+      homeRestore.onclick = async () => {
+        const code = prompt("הזינו את קוד הגיבוי:", RLCloudSync.getCode() || "");
+        if (!code) return;
+        try {
+          await RLCloudSync.pullAndRestore(code);
+          alert("שוחזר. מרענן…");
+          location.reload();
+        } catch (e) {
+          alert("שחזור נכשל: " + (e && e.message ? e.message : e));
+        }
+      };
+    }
 
     const tipX = qs("#tip-x");
     if (tipX) {
@@ -428,6 +449,143 @@
     });
   }
 
+
+  function refreshSyncStatusLine() {
+    const line = qs("#sync-status-line");
+    if (!line || !window.RLCloudSync) return;
+    const st = RLCloudSync.status();
+    if (!st.endpointReady) {
+      line.textContent = "שרת גיבוי לא מוכן.";
+      return;
+    }
+    if (st.hasCode) {
+      line.innerHTML =
+        "קוד פעיל · עדכון אחרון: <strong>" +
+        (st.lastPushAt ? new Date(st.lastPushAt).toLocaleString("he-IL") : "עדיין לא") +
+        "</strong>";
+      const box = qs("#sync-code-box");
+      const txt = qs("#sync-code-text");
+      if (box && txt) {
+        box.hidden = false;
+        txt.textContent = st.code;
+      }
+    } else {
+      line.textContent =
+        "עדיין אין קוד גיבוי — לחצו «הפעל גיבוי ענן» אחרי שיש התקדמות.";
+    }
+  }
+
+  function bindBackupUi() {
+    if (!window.RLCloudSync) return;
+    refreshSyncStatusLine();
+    const enable = qs("#btn-enable-cloud");
+    if (enable) {
+      enable.onclick = async () => {
+        enable.disabled = true;
+        enable.textContent = "מסנכרן…";
+        try {
+          const r = await RLCloudSync.enableCloud();
+          refreshSyncStatusLine();
+          alert(
+            "קוד הגיבוי שלכם:\n\n" +
+              r.code +
+              "\n\nשמרו אותו מחוץ לדפדפן (וואטסאפ לעצמכם / פתק). אחרי «ניקוי נתוני אתר» תזינו אותו ב«שחזר מקוד»."
+          );
+        } catch (e) {
+          alert("סנכרון נכשל: " + (e && e.message ? e.message : e));
+        } finally {
+          enable.disabled = false;
+          enable.textContent = "הפעל / סנכרן גיבוי ענן";
+          refreshSyncStatusLine();
+        }
+      };
+    }
+    const restore = qs("#btn-restore-cloud");
+    if (restore) {
+      restore.onclick = async () => {
+        const code = prompt(
+          "הזינו את קוד הגיבוי (לפחות 10 תווים):",
+          RLCloudSync.getCode() || ""
+        );
+        if (!code) return;
+        restore.disabled = true;
+        try {
+          await RLCloudSync.pullAndRestore(code);
+          alert("ההתקדמות שוחזרה מהענן. מרענן…");
+          location.reload();
+        } catch (e) {
+          alert("שחזור נכשל: " + (e && e.message ? e.message : e));
+        } finally {
+          restore.disabled = false;
+        }
+      };
+    }
+    const copy = qs("#btn-copy-code");
+    if (copy) {
+      copy.onclick = async () => {
+        const c = RLCloudSync.getCode();
+        if (!c) return;
+        try {
+          await navigator.clipboard.writeText(c);
+          copy.textContent = "הועתק ✓";
+          setTimeout(() => (copy.textContent = "העתק קוד"), 1500);
+        } catch (e) {
+          prompt("העתיקו את הקוד:", c);
+        }
+      };
+    }
+    const exp = qs("#btn-export-file");
+    if (exp) {
+      exp.onclick = () => {
+        const name = RLCloudSync.downloadBackup();
+        alert("הורד: " + name + " — שמרו מחוץ לדפדפן.");
+      };
+    }
+    const share = qs("#btn-share-file");
+    if (share) {
+      share.onclick = async () => {
+        try {
+          await RLCloudSync.shareBackup();
+        } catch (e) {
+          RLCloudSync.downloadBackup();
+        }
+      };
+    }
+    const inp = qs("#btn-import-file");
+    if (inp) {
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        try {
+          await RLCloudSync.importFromFile(f);
+          alert("ייבוא הצליח. מרענן…");
+          location.reload();
+        } catch (e) {
+          alert("ייבוא נכשל: " + (e && e.message ? e.message : e));
+        } finally {
+          inp.value = "";
+        }
+      };
+    }
+  }
+
+  function initCloudSync(appId, filePrefix) {
+    if (!window.RLCloudSync) return;
+    RLCloudSync.cfg({ appId: appId, filePrefix: filePrefix });
+    RLCloudSync.attachAutoSync();
+    try {
+      const empty = !(RLProgress.hasProgress && RLProgress.hasProgress());
+      const code = RLCloudSync.getCode();
+      if (empty && code) {
+        RLCloudSync.pullAndRestore(code)
+          .then(function () {
+            location.reload();
+          })
+          .catch(function () {});
+      }
+    } catch (e) {}
+  }
+
   function renderProgress() {
     showNav(true);
     setActiveNav("progress");
@@ -483,7 +641,23 @@
       '<div class="card"><h2>לפי רמה</h2>' +
       rows +
       "</div>" +
+      '<div class="card" id="backup-card"><h2>גיבוי התקדמות ☁️</h2>' +
+      '<p class="sub">«ניקוי נתוני אתר» ב־Chrome מוחק localStorage. גיבוי ענן / קובץ שורד את זה.</p>' +
+      '<p class="sub" id="sync-status-line" style="margin-bottom:10px"></p>' +
+      '<div class="sync-code-box" id="sync-code-box" hidden>' +
+      '<div class="sub">קוד שחזור (שמרו בוואטסאפ / פתק):</div>' +
+      '<div class="sync-code" id="sync-code-text"></div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-copy-code" style="width:100%;margin-top:8px">העתק קוד</button></div>' +
+      '<button type="button" class="btn btn-primary" id="btn-enable-cloud" style="margin-top:8px">הפעל / סנכרן גיבוי ענן</button>' +
+      '<button type="button" class="btn btn-blue" id="btn-restore-cloud" style="margin-top:8px">שחזר מקוד גיבוי</button>' +
+      '<div class="backup-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-export-file" style="flex:1">ייצוא קובץ</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="btn-share-file" style="flex:1">שתף גיבוי</button>' +
+      '<label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer">ייבוא קובץ' +
+      '<input type="file" id="btn-import-file" accept="application/json,.json" hidden /></label></div>' +
+      '<p class="sub" style="margin-top:10px">טיפ: אחרי עדכון אפליקציה — רענון רגיל מספיק. <strong>אל תנקו נתוני אתר</strong> אלא אם יש לכם קוד/קובץ גיבוי.</p></div>' +
       '<div class="card"><h2>טיפ</h2><p class="sub">שיעור אחד ביום ≈ כ־6 שנים לסיום A1→C2. מסלול צפוף (~2000 שיעורים), יסוד רחב, חזרות ושערי ביקורת — אל תמהרו.</p></div>';
+    bindBackupUi();
   }
 
   function renderConversation() {
@@ -823,6 +997,7 @@
         ),
       ]);
       activeLevel = RLProgress.get().currentLevel || "A1";
+      initCloudSync(APP_SYNC_ID, APP_FILE_PREFIX);
       await navigate("home");
     } catch (e) {
       const msg =

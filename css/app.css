@@ -760,3 +760,22 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
   color: #fff;
   font-weight: 600;
 }
+
+/* Cloud backup */
+.sync-code-box {
+  background: var(--bg, #eef2f7);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 8px 0;
+  text-align: center;
+}
+.sync-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  word-break: break-all;
+  margin-top: 6px;
+  color: var(--text, #1a1a1a);
+}
+.backup-row label.btn { margin: 0; }
