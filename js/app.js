@@ -133,6 +133,51 @@
     } catch (e) {}
   }
 
+
+  function showCloudBackupToast(notice) {
+    if (!notice || !notice.code) return;
+    try {
+      let el = document.getElementById("rl-cloud-backup-toast");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "rl-cloud-backup-toast";
+        el.setAttribute("role", "status");
+        el.style.cssText =
+          "position:fixed;bottom:84px;left:12px;right:12px;z-index:10000;background:#58CC02;color:#fff;padding:14px 14px 12px;border-radius:14px;font-weight:700;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25);line-height:1.45";
+        document.body.appendChild(el);
+      }
+      const code = String(notice.code);
+      el.innerHTML =
+        '<div style="margin-bottom:6px">☁️ ההתקדמות מגובה בענן. שמור את הקוד:</div>' +
+        '<div style="font-family:ui-monospace,monospace;font-size:1.05rem;letter-spacing:0.04em;background:rgba(0,0,0,.18);padding:8px 10px;border-radius:10px;margin:6px 0 10px;word-break:break-all" id="rl-cloud-toast-code">' +
+        code.replace(/&/g, "&amp;").replace(/</g, "&lt;") +
+        "</div>" +
+        '<button type="button" id="rl-cloud-toast-copy" style="border:0;background:#fff;color:#3d8c00;font-weight:800;padding:8px 14px;border-radius:10px;cursor:pointer">העתק קוד</button>' +
+        '<button type="button" id="rl-cloud-toast-dismiss" style="border:0;background:transparent;color:#fff;font-weight:700;padding:8px 12px;margin-right:6px;cursor:pointer;opacity:.9">סגור</button>';
+      el.hidden = false;
+      clearTimeout(showCloudBackupToast._t);
+      const copyBtn = el.querySelector("#rl-cloud-toast-copy");
+      const dismissBtn = el.querySelector("#rl-cloud-toast-dismiss");
+      function hide() {
+        el.hidden = true;
+      }
+      if (copyBtn) {
+        copyBtn.onclick = async function () {
+          try {
+            await navigator.clipboard.writeText(code);
+            copyBtn.textContent = "הועתק ✓";
+          } catch (e) {
+            try {
+              prompt("העתיקו את הקוד:", code);
+            } catch (e2) {}
+          }
+        };
+      }
+      if (dismissBtn) dismissBtn.onclick = hide;
+      showCloudBackupToast._t = setTimeout(hide, 20000);
+    } catch (e) {}
+  }
+
   function maybeShowRestoreNotice() {
     try {
       if (window.RLProgress && RLProgress.consumeRestoreNotice) {
@@ -551,7 +596,7 @@
       }
     } else {
       line.textContent =
-        "עדיין אין קוד גיבוי — לחצו «הפעל גיבוי ענן» אחרי שיש התקדמות.";
+        "אחרי השיעור הראשון יופעל גיבוי ענן אוטומטית (או לחצו «הפעל גיבוי ענן»).";
     }
   }
 
@@ -663,6 +708,15 @@
     if (!window.RLCloudSync) return;
     RLCloudSync.cfg({ appId: appId, filePrefix: filePrefix });
     RLCloudSync.attachAutoSync();
+    try {
+      if (RLCloudSync.setAutoEnableHandler) {
+        RLCloudSync.setAutoEnableHandler(function (notice) {
+          showCloudBackupToast(notice);
+        });
+      }
+      const pending = RLCloudSync.consumeAutoEnableNotice && RLCloudSync.consumeAutoEnableNotice();
+      if (pending) showCloudBackupToast(pending);
+    } catch (eAE) {}
     try {
       if (typeof maybeShowRestoreNotice === "function") maybeShowRestoreNotice();
     } catch (e) {}

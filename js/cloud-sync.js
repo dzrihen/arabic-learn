@@ -7,12 +7,17 @@
   const CODE_KEY = "learn_sync_code_v1";
   const META_KEY = "learn_sync_meta_v1";
   const DEBOUNCE_MS = 2500;
+  const SOFT_RETRY_MS = 15000;
 
   let APP_ID = "unknown-learn";
   let FILE_PREFIX = "learn";
   let timer = null;
+  let softRetryTimer = null;
   let lastStatus = { ok: true, text: "" };
   let lastMergeNotice = null;
+  let pendingAutoEnableNotice = null;
+  let autoEnableHandler = null;
+  let pushInFlight = false;
 
   function cfg(opts) {
     if (!opts) return;
@@ -311,16 +316,94 @@
     }
   }
 
+  function emitAutoEnableNotice(notice) {
+    pendingAutoEnableNotice = notice;
+    try {
+      if (typeof autoEnableHandler === "function") autoEnableHandler(notice);
+    } catch (e) {}
+  }
+
+  /**
+   * Push to cloud; if no recovery code yet and local progress is non-empty,
+   * auto-generate+store a code first (first lesson / meaningful save).
+   * Soft-fails — never throws to callers that ignore the promise.
+   */
+  async function ensureAndPush(opts) {
+    opts = opts || {};
+    if (pushInFlight && !opts.force) {
+      // Coalesce: another push is running; schedule a follow-up.
+      schedulePush(false);
+      return { ok: false, reason: "in_flight" };
+    }
+    let newlyCreated = false;
+    let code = getCode();
+    if (!code) {
+      const richness = progressRichness(
+        global.RLProgress && RLProgress.get ? RLProgress.get() : null
+      );
+      if (richness === 0 && !opts.force) {
+        lastStatus = { ok: false, text: "אין התקדמות מקומית לשמירה בענן" };
+        return { ok: false, reason: "empty_local" };
+      }
+      code = randomCode();
+      setCode(code);
+      newlyCreated = true;
+      const meta = getMeta();
+      meta.autoEnabledAt = Date.now();
+      setMeta(meta);
+    }
+
+    pushInFlight = true;
+    let r;
+    try {
+      r = await pushNow(opts);
+    } finally {
+      pushInFlight = false;
+    }
+
+    if (newlyCreated) {
+      emitAutoEnableNotice({
+        code: getCode(),
+        at: Date.now(),
+        pushOk: !!(r && r.ok),
+      });
+    }
+
+    // Soft retry later on network / server failure (not empty / no endpoint).
+    if (
+      r &&
+      !r.ok &&
+      r.reason !== "empty_local" &&
+      r.reason !== "no_code" &&
+      r.reason !== "no_endpoint" &&
+      r.reason !== "in_flight"
+    ) {
+      if (softRetryTimer) clearTimeout(softRetryTimer);
+      softRetryTimer = setTimeout(function () {
+        softRetryTimer = null;
+        ensureAndPush({ force: !!opts.force }).catch(function () {});
+      }, SOFT_RETRY_MS);
+    }
+
+    return Object.assign({}, r || { ok: false }, {
+      newlyCreated: newlyCreated,
+      code: getCode(),
+    });
+  }
+
   function schedulePush(immediate) {
     if (timer) clearTimeout(timer);
     if (immediate) {
       timer = null;
-      return pushNow();
+      return ensureAndPush().catch(function () {
+        return { ok: false, reason: "exception" };
+      });
     }
     timer = setTimeout(function () {
       timer = null;
-      pushNow();
+      ensureAndPush().catch(function () {});
     }, DEBOUNCE_MS);
+    return Promise.resolve({ ok: true, reason: "scheduled" });
   }
 
   async function pullAndRestore(codeInput, opts) {
@@ -396,6 +479,7 @@
       endpointReady: !!(endpoint() && endpoint().indexOf("XXXX") < 0),
       appId: APP_ID,
       lastMergeNotice: lastMergeNotice,
+      autoEnabledAt: meta.autoEnabledAt || null,
     };
   }
 
@@ -405,7 +489,17 @@
     return n;
   }
 
-  // Hook progress saves
+  function consumeAutoEnableNotice() {
+    const n = pendingAutoEnableNotice;
+    pendingAutoEnableNotice = null;
+    return n;
+  }
+
+  function setAutoEnableHandler(fn) {
+    autoEnableHandler = typeof fn === "function" ? fn : null;
+  }
+
+  // Hook progress / SRS saves → debounced ensure+push (auto-creates code on first real progress).
   function attachAutoSync() {
     if (global.RLProgress && typeof RLProgress.setSaveHook === "function") {
       RLProgress.setSaveHook(function () {
@@ -432,12 +526,15 @@
     shareBackup,
     importFromFile,
     pushNow,
+    ensureAndPush,
     schedulePush,
     pullAndRestore,
     enableCloud,
     status,
     attachAutoSync,
     consumeMergeNotice,
+    consumeAutoEnableNotice,
+    setAutoEnableHandler,
     CODE_KEY,
   };
 })(window);
