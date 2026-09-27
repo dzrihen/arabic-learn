@@ -3,27 +3,82 @@
   "use strict";
 
   const KEY = "al_srs_v1";
+  const BACKUP_KEY = KEY + "_backup";
   // Intervals in days for again / good / easy progression
   const STEPS_DAYS = [1, 3, 7, 16, 35];
   const SESSION_SIZE = 15;
 
   let saveHook = null;
 
+  function srsCount(s) {
+    return s && s.cards && typeof s.cards === "object" ? Object.keys(s.cards).length : 0;
+  }
+
+  function parseSrs(raw) {
+    const data = JSON.parse(raw);
+    return { cards: (data && data.cards) || {}, seen: (data && data.seen) || {} };
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return { cards: {}, seen: {} };
-      const data = JSON.parse(raw);
-      return { cards: data.cards || {}, seen: data.seen || {} };
+      if (raw) {
+        try {
+          const data = parseSrs(raw);
+          if (srsCount(data) > 0) {
+            try {
+              localStorage.setItem(BACKUP_KEY, raw);
+            } catch (e) {}
+            return data;
+          }
+        } catch (e) {}
+      }
+      const bak = localStorage.getItem(BACKUP_KEY);
+      if (bak) {
+        try {
+          const data = parseSrs(bak);
+          if (srsCount(data) > 0) {
+            try {
+              localStorage.setItem(KEY, bak);
+            } catch (e) {}
+            return data;
+          }
+        } catch (e) {}
+      }
+      if (raw) {
+        try {
+          return parseSrs(raw);
+        } catch (e) {}
+      }
+      return { cards: {}, seen: {} };
     } catch (e) {
       return { cards: {}, seen: {} };
     }
   }
 
   function save(state) {
+    const n = srsCount(state);
     try {
+      const existingRaw = localStorage.getItem(KEY);
+      if (n === 0 && existingRaw) {
+        try {
+          if (srsCount(parseSrs(existingRaw)) > 0) {
+            // refuse empty overwrite of non-empty SRS
+            return;
+          }
+        } catch (e) {}
+      }
       localStorage.setItem(KEY, JSON.stringify(state));
-    } catch (e) {}
+      if (n > 0) {
+        try {
+          localStorage.setItem(BACKUP_KEY, JSON.stringify(state));
+        } catch (e2) {}
+      }
+    } catch (e) {
+      try {
+        if (n > 0) localStorage.setItem(BACKUP_KEY, JSON.stringify(state));
+      } catch (e2) {}
+    }
     try {
       if (typeof saveHook === "function") saveHook(state);
     } catch (e) {}
@@ -242,10 +297,15 @@
 
   function importState(data) {
     if (!data || typeof data !== "object") throw new Error("srs invalid");
-    state = {
+    const next = {
       cards: data.cards && typeof data.cards === "object" ? data.cards : {},
       seen: data.seen && typeof data.seen === "object" ? data.seen : {},
     };
+    if (srsCount(next) === 0 && srsCount(state) > 0) {
+      // never silently wipe SRS with empty import
+      return state;
+    }
+    state = next;
     save(state);
     return state;
   }

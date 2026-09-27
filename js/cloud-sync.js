@@ -12,6 +12,7 @@
   let FILE_PREFIX = "learn";
   let timer = null;
   let lastStatus = { ok: true, text: "" };
+  let lastMergeNotice = null;
 
   function cfg(opts) {
     if (!opts) return;
@@ -83,6 +84,22 @@
     return out;
   }
 
+  function progressRichness(p) {
+    if (global.RLProgress && typeof RLProgress.richness === "function") {
+      return RLProgress.richness(p);
+    }
+    if (!p || typeof p !== "object") return 0;
+    const n =
+      p.completed && typeof p.completed === "object" ? Object.keys(p.completed).length : 0;
+    return n * 1000 + (Number(p.xp) || 0);
+  }
+
+  function srsRichness(s) {
+    if (!s || typeof s !== "object") return 0;
+    const cards = s.cards && typeof s.cards === "object" ? Object.keys(s.cards).length : 0;
+    return cards;
+  }
+
   function collectBundle() {
     const progress = global.RLProgress && RLProgress.get ? RLProgress.get() : null;
     const srs = global.RLSrs && RLSrs._state ? RLSrs._state() : { cards: {}, seen: {} };
@@ -95,22 +112,93 @@
     };
   }
 
+  /**
+   * Apply a backup bundle. Never overwrite non-empty local with empty cloud/file
+   * unless opts.allowEmptyWipe. Prefer richer local when opts.force is false.
+   * Manual restore passes force:true for appId mismatch only; empty still refused.
+   */
   function applyBundle(bundle, opts) {
     opts = opts || {};
     if (!bundle || typeof bundle !== "object") throw new Error("קובץ גיבוי לא תקין");
     if (bundle.appId && bundle.appId !== APP_ID && !opts.force) {
       throw new Error("הגיבוי שייך לאפליקציה אחרת (" + bundle.appId + ")");
     }
+
+    let appliedProgress = false;
+    let keptLocalProgress = false;
+
     if (bundle.progress && global.RLProgress && RLProgress.importState) {
-      RLProgress.importState(bundle.progress);
+      const local = RLProgress.get ? RLProgress.get() : null;
+      const localR = progressRichness(local);
+      const inR = progressRichness(bundle.progress);
+
+      if (inR === 0 && localR > 0) {
+        // Cloud/file empty while local has progress — keep local.
+        keptLocalProgress = true;
+        lastMergeNotice = {
+          at: Date.now(),
+          kind: "kept_local",
+          reason: "cloud_empty",
+          localXp: local && local.xp,
+        };
+      } else if (inR < localR && !opts.force && !opts.allowWeaker) {
+        keptLocalProgress = true;
+        lastMergeNotice = {
+          at: Date.now(),
+          kind: "kept_local",
+          reason: "local_richer",
+          localXp: local && local.xp,
+        };
+      } else if (inR === 0 && localR === 0) {
+        // Both empty — no-op (avoid writing defaults churn).
+        appliedProgress = false;
+      } else {
+        try {
+          RLProgress.importState(bundle.progress, {
+            force: !!opts.force && inR > 0,
+            allowWeaker: !!opts.allowWeaker || !!opts.force,
+            fromCloud: !!opts.fromCloud,
+          });
+          appliedProgress = true;
+          if (opts.fromCloud && inR > 0) {
+            lastMergeNotice = {
+              at: Date.now(),
+              kind: "restored_cloud",
+              xp: bundle.progress.xp,
+              completed: Object.keys(bundle.progress.completed || {}).length,
+            };
+          }
+        } catch (e) {
+          // import refused empty-over-nonzero — treat as kept local
+          keptLocalProgress = true;
+          lastMergeNotice = {
+            at: Date.now(),
+            kind: "kept_local",
+            reason: "import_refused",
+            message: String(e && e.message ? e.message : e),
+          };
+        }
+      }
     } else if (bundle.progress && global.RLProgress) {
-      // fallback: write raw then reload page expectation
       throw new Error("importState חסר");
     }
+
     if (bundle.srs && global.RLSrs && RLSrs.importState) {
-      RLSrs.importState(bundle.srs);
+      const localSrs = RLSrs._state ? RLSrs._state() : null;
+      const localSR = srsRichness(localSrs);
+      const inSR = srsRichness(bundle.srs);
+      if (inSR === 0 && localSR > 0) {
+        // keep local srs
+      } else if (inSR < localSR && !opts.force && !opts.allowWeaker) {
+        // keep local
+      } else if (inSR > 0 || localSR === 0) {
+        try {
+          RLSrs.importState(bundle.srs);
+        } catch (e) {}
+      }
     }
-    return true;
+
+    return { appliedProgress: appliedProgress, keptLocalProgress: keptLocalProgress };
   }
 
   function downloadBackup() {
@@ -166,7 +254,7 @@
       reader.onload = function () {
         try {
           const data = JSON.parse(String(reader.result || ""));
-          applyBundle(data);
+          applyBundle(data, { force: true, fromCloud: false });
           schedulePush(true);
           resolve(data);
         } catch (e) {
@@ -180,7 +268,8 @@
     });
   }
 
-  async function pushNow() {
+  async function pushNow(opts) {
+    opts = opts || {};
     const code = getCode();
     if (!code) {
       lastStatus = { ok: false, text: "אין קוד גיבוי" };
@@ -192,6 +281,11 @@
       return { ok: false, reason: "no_endpoint" };
     }
     const payload = collectBundle();
+    // Never push empty progress — protects cloud after a local wipe/reset glitch.
+    if (progressRichness(payload.progress) === 0 && !opts.force) {
+      lastStatus = { ok: false, text: "אין התקדמות מקומית לשמירה בענן" };
+      return { ok: false, reason: "empty_local" };
+    }
     try {
       const res = await fetch(base.replace(/\/$/, "") + "/v1/" + code, {
         method: "PUT",
@@ -229,7 +323,8 @@
     }, DEBOUNCE_MS);
   }
 
-  async function pullAndRestore(codeInput) {
+  async function pullAndRestore(codeInput, opts) {
+    opts = opts || {};
     const code = normalizeCode(codeInput || getCode());
     if (!code) throw new Error("הזינו קוד גיבוי תקין (לפחות 10 תווים)");
     const base = endpoint();
@@ -249,12 +344,35 @@
           : "הקוד ריק עדיין — שמרו התקדמות באפליקציה ואז סנכרנו"
       );
     }
-    applyBundle(entry.payload, { force: true });
+
+    const payload = entry.payload;
+    const cloudR = progressRichness(payload && payload.progress);
+    const localR =
+      global.RLProgress && RLProgress.get ? progressRichness(RLProgress.get()) : 0;
+
+    // Cloud empty while local has progress — keep local, do not overwrite.
+    if (cloudR === 0 && localR > 0) {
+      setCode(code);
+      lastMergeNotice = {
+        at: Date.now(),
+        kind: "kept_local",
+        reason: "cloud_empty",
+      };
+      lastStatus = { ok: true, text: "הענן ריק — נשמרה ההתקדמות המקומית" };
+      return { payload: payload, keptLocal: true };
+    }
+
+    const result = applyBundle(payload, {
+      force: true, // allow appId / weaker when user explicitly restores
+      fromCloud: true,
+      allowWeaker: !!opts.allowWeaker || localR === 0,
+    });
+    // If apply refused empty somehow, still keep going.
     setCode(code);
     const meta = getMeta();
     meta.lastPullAt = Date.now();
     setMeta(meta);
-    return entry.payload;
+    return { payload: payload, keptLocal: !!(result && result.keptLocalProgress) };
   }
 
   async function enableCloud() {
@@ -277,7 +395,14 @@
       lastStatus: lastStatus,
       endpointReady: !!(endpoint() && endpoint().indexOf("XXXX") < 0),
       appId: APP_ID,
+      lastMergeNotice: lastMergeNotice,
     };
+  }
+
+  function consumeMergeNotice() {
+    const n = lastMergeNotice;
+    lastMergeNotice = null;
+    return n;
   }
 
   // Hook progress saves
@@ -312,6 +437,7 @@
     enableCloud,
     status,
     attachAutoSync,
+    consumeMergeNotice,
     CODE_KEY,
   };
 })(window);

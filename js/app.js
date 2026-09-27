@@ -74,23 +74,94 @@
 
   function backupCardHtml() {
     if (!window.RLCloudSync) return "";
+    const st = RLCloudSync.status();
+    const hasCode = !!(st && st.hasCode);
+    const hasProg = !!(RLProgress.hasProgress && RLProgress.hasProgress());
+    const needRemind = !hasCode && hasProg;
+    const border = needRemind
+      ? "border:2px solid #FF9600;box-shadow:0 0 0 3px rgba(255,150,0,.2)"
+      : hasCode
+        ? ""
+        : "border:2px solid #1CB0F6";
+    const remind = needRemind
+      ? '<p class="sub" style="color:#B35C00;font-weight:700;margin-bottom:8px">⚠️ חשוב: עדיין אין קוד גיבוי — בלי זה «ניקוי נתוני אתר» מוחק את כל ההתקדמות לצמיתות.</p>'
+      : !hasCode
+        ? '<p class="sub" style="color:#0B6E99;margin-bottom:8px">מומלץ להפעיל גיבוי ענן אחרי השיעור הראשון — ואז לשמור את הקוד בוואטסאפ.</p>'
+        : "";
     return (
-      '<div class="card backup-card" id="backup-card"><h2>גיבוי התקדמות ☁️</h2>' +
+      '<div class="card backup-card" id="backup-card"' +
+      (border ? ' style="' + border + '"' : "") +
+      "><h2>גיבוי התקדמות ☁️</h2>" +
+      remind +
       '<p class="sub">שמרו את ההתקדמות גם אם הטלפון מנקה נתוני אתר.</p>' +
       '<p class="sub" id="sync-status-line" style="margin-bottom:10px"></p>' +
       '<div class="sync-code-box" id="sync-code-box" hidden>' +
       '<div class="sub">קוד שחזור (שמרו בוואטסאפ / פתק):</div>' +
       '<div class="sync-code" id="sync-code-text"></div>' +
       '<button type="button" class="btn btn-ghost btn-sm" id="btn-copy-code" style="width:100%;margin-top:8px">העתק קוד</button></div>' +
-      '<button type="button" class="btn btn-primary" id="btn-enable-cloud" style="margin-top:8px">הפעל/סנכרן גיבוי ענן</button>' +
+      '<button type="button" class="btn btn-primary" id="btn-enable-cloud" style="margin-top:8px">' +
+      (needRemind ? "הפעילו גיבוי ענן עכשיו" : "הפעל/סנכרן גיבוי ענן") +
+      "</button>" +
       '<button type="button" class="btn btn-blue" id="btn-restore-cloud" style="margin-top:8px">שחזר מקוד</button>' +
       '<div class="backup-row" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">' +
       '<button type="button" class="btn btn-ghost btn-sm" id="btn-export-file" style="flex:1">ייצוא</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" id="btn-share-file" style="flex:1">שתף גיבוי</button>' +
       '<label class="btn btn-ghost btn-sm" style="flex:1;text-align:center;cursor:pointer">ייבוא קובץ' +
       '<input type="file" id="btn-import-file" accept="application/json,.json" hidden /></label></div>' +
-      '<p class="sub" style="margin-top:10px">אחרי «ניקוי נתוני אתר» השתמשו בקוד או בקובץ כדי לשחזר.</p></div>'
+      '<p class="sub" style="margin-top:10px">אחרי «ניקוי נתוני אתר» השתמשו בקוד או בקובץ כדי לשחזר. עדכון אפליקציה / Service Worker <strong>לא</strong> מוחק התקדמות.</p></div>'
     );
+  }
+
+  function showProgressToast(msg) {
+    if (!msg) return;
+    try {
+      let el = document.getElementById("rl-progress-toast");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "rl-progress-toast";
+        el.setAttribute("role", "status");
+        el.style.cssText =
+          "position:fixed;bottom:84px;left:12px;right:12px;z-index:9999;background:#1CB0F6;color:#fff;padding:12px 14px;border-radius:12px;font-weight:700;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.2)";
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.hidden = false;
+      clearTimeout(showProgressToast._t);
+      showProgressToast._t = setTimeout(function () {
+        el.hidden = true;
+      }, 4500);
+    } catch (e) {}
+  }
+
+  function maybeShowRestoreNotice() {
+    try {
+      if (window.RLProgress && RLProgress.consumeRestoreNotice) {
+        const n = RLProgress.consumeRestoreNotice();
+        if (n && n.source === "backup") {
+          showProgressToast(
+            "שוחזר גיבוי מקומי · " +
+              (n.completed || 0) +
+              " שיעורים · " +
+              (n.xp || 0) +
+              " XP"
+          );
+        }
+      }
+      if (window.RLCloudSync && RLCloudSync.consumeMergeNotice) {
+        const m = RLCloudSync.consumeMergeNotice();
+        if (m && m.kind === "restored_cloud") {
+          showProgressToast(
+            "שוחזר מהענן · " +
+              (m.completed || 0) +
+              " שיעורים · " +
+              (m.xp || 0) +
+              " XP"
+          );
+        } else if (m && m.kind === "kept_local") {
+          showProgressToast("נשמרה ההתקדמות המקומית (הענן היה ריק/חלש)");
+        }
+      }
+    } catch (e) {}
   }
 
   async function renderHome() {
@@ -519,8 +590,12 @@
         if (!code) return;
         restore.disabled = true;
         try {
-          await RLCloudSync.pullAndRestore(code);
-          alert("ההתקדמות שוחזרה מהענן. מרענן…");
+          const pr = await RLCloudSync.pullAndRestore(code);
+          if (pr && pr.keptLocal) {
+            alert("הענן ריק/חלש — ההתקדמות המקומית נשמרה. לא נדרס כלום.");
+          } else {
+            alert("ההתקדמות שוחזרה מהענן. מרענן…");
+          }
           try {
             sessionStorage.setItem("rl_last_reload", "cloud-manual-restore");
           } catch (e) {}
@@ -589,6 +664,9 @@
     RLCloudSync.cfg({ appId: appId, filePrefix: filePrefix });
     RLCloudSync.attachAutoSync();
     try {
+      if (typeof maybeShowRestoreNotice === "function") maybeShowRestoreNotice();
+    } catch (e) {}
+    try {
       const empty = !(RLProgress.hasProgress && RLProgress.hasProgress());
       const code = RLCloudSync.getCode();
       if (!(empty && code)) return;
@@ -622,6 +700,9 @@
                 const idleHome =
                   !lessonBusy() && (route === "home" || route === "boot" || !route);
                 if (!idleHome) return;
+                try {
+                  if (typeof maybeShowRestoreNotice === "function") maybeShowRestoreNotice();
+                } catch (eN) {}
                 try {
                   if (typeof navigate === "function") {
                     navigate("home", { force: true, reason: "cloud-restore" });
