@@ -445,6 +445,7 @@
           c.type = "button";
           if (!used) {
             c.onclick = () => {
+              RLSpeech.speak(item.w);
               picked.push(item);
               sync();
               rebuildBank();
@@ -484,6 +485,7 @@
       const targetSpeak = ex.ru || words.join(" ");
       if (targetSpeak) {
         card.appendChild(ttsButton(targetSpeak, false, "השמע את המשפט"));
+        scheduleAutoPlay(targetSpeak);
       }
       const distractors = ex.distractors || [];
       const answer = markTarget(el("div", "chip-answer"));
@@ -512,6 +514,7 @@
           c.type = "button";
           if (!used) {
             c.onclick = () => {
+              RLSpeech.speak(item.w);
               picked.push(item);
               sync();
               rebuildBank();
@@ -698,10 +701,10 @@
         b.type = "button";
         b.onclick = () => {
           if (busy) return;
+          RLSpeech.speak(label);
           if (ok || label === ex.answer) {
             b.classList.add("correct");
             const full = (ex.sentence || "").replace("___", ex.answer || label);
-            RLSpeech.speak(full);
             succeed(targetText(full));
           } else {
             b.classList.add("wrong");
@@ -734,10 +737,10 @@
         b.dataset.side = item.side;
         b.onclick = () => {
           if (busy || b.classList.contains("matched")) return;
+          if (item.side === "ru" && item.text) RLSpeech.speak(item.text);
           if (!selected) {
             selected = b;
             b.classList.add("selected");
-            if (item.side === "ru" && item.text) RLSpeech.speak(item.text);
             return;
           }
           if (selected === b) {
