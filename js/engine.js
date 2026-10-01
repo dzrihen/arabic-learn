@@ -850,7 +850,8 @@
       card.appendChild(el("div", "ex-prompt", ex.promptHe || "למד את האות"));
       if (ex.letter) {
         const big = markTarget(el("div", "ru-big"));
-        big.style.fontSize = "4rem";
+        big.style.fontSize = "5.2rem";
+        big.style.lineHeight = "1.3";
         big.textContent = ex.letter;
         card.appendChild(big);
         if (ex.nameHe) card.appendChild(el("div", "he-prompt", escapeHtml(ex.nameHe)));

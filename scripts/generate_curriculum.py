@@ -13,6 +13,7 @@ from vocab_bank import LemmaTracker, generate_lemma_sentences, natural_rows_for_
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "data")
 CHECKPOINT_EVERY = 10
+DATA_VERSION = "15"
 
 # Arabic alphabet (28 letters) — for reading dialect words
 ALPHABET = [
@@ -32,8 +33,17 @@ def mark_rows(tracker, rows):
     for r in rows:
         tracker.mark_text(r[0] if isinstance(r, (list, tuple)) else r.get("ru",""))
 
-def curated_plus_vocab(tracker, curated, cefr, theme, target_rows):
+EVERYDAY_PATH = os.path.join(os.path.dirname(__file__), "everyday_sentences.json")
+EVERYDAY = json.load(open(EVERYDAY_PATH, encoding="utf-8")) if os.path.exists(EVERYDAY_PATH) else {}
+
+def curated_plus_vocab(tracker, curated, cefr, theme, target_rows, uid=None):
     rows = list(curated)
+    # hand-written everyday sentences for the unit topic come before any
+    # template/vocab filler (see template_guard.py for why)
+    seen = {r[0] for r in rows}
+    for ru, he in EVERYDAY.get(uid or "", []):
+        if ru not in seen and len(rows) < target_rows:
+            rows.append((ru, he)); seen.add(ru)
     mark_rows(tracker, rows)
     need = max(0, target_rows - len(rows))
     while need > 0:
@@ -236,7 +246,7 @@ def seeds_b1():
       ],"הבעת דעה",36),
       ("b1-u02","סיפורי עבר","حكي",[
         ("لما","כאשר"),("بعد ما","אחרי ש"),("قبل ما","לפני ש"),
-        ("بعد ما","בזמן ש…"),("فجأة","פתאום"),
+        ("بينما","בזמן ש…"),("فجأة","פתאום"),
       ],"קישורי זמן",34),
       ("b1-u03","תקשורת","تواصل",[
         ("بعت رسالة.","שלחתי הודעה."),("لسا ما رد.","עדיין לא ענה."),
@@ -398,7 +408,9 @@ def main():
     with open(os.path.join(OUT, "files.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
     with open(os.path.join(OUT, "files.js"), "w", encoding="utf-8") as f:
-        f.write("window.RL_LEVEL_FILES=" + json.dumps(manifest, ensure_ascii=False) + ";\n")
+        # ?v= cache-buster: bump together with sw.js CACHE_NAME / index.html assets
+        versioned = {k: [f + "?v=" + DATA_VERSION for f in v] for k, v in manifest.items()}
+        f.write("window.RL_LEVEL_FILES=" + json.dumps(versioned, ensure_ascii=False) + ";\n")
     meta = {
         "bankSize": tracker.stats()["bank_size"],
         "introducedInContent": tracker.stats()["introduced"],
