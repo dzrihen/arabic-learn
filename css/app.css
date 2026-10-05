@@ -506,6 +506,96 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
   color: transparent;
   pointer-events: none;
 }
+/* Chip Hebrew transliteration + word-by-word slots + hints (v16) */
+.chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.25;
+}
+.chip-fa {
+  font-family: var(--ru);
+  direction: rtl;
+  unicode-bidi: isolate;
+  font-weight: 700;
+}
+.chip-he-tl {
+  font-family: var(--font);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ca3af;
+  direction: rtl;
+  unicode-bidi: isolate;
+  line-height: 1.15;
+  max-width: 9.5em;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.chip.locked {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  opacity: 0.95;
+  cursor: default;
+}
+.chip.locked .chip-he-tl { color: #6b7280; }
+.chip-hint-note {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  padding: 6px 10px;
+  margin: 4px 0 2px;
+}
+.wbw-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 10px;
+  direction: rtl;
+}
+.wbw-slot {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.wbw-slot.active {
+  background: var(--blue-soft);
+  border-style: solid;
+  border-color: #38bdf8;
+  color: #0369a1;
+  transform: scale(1.12);
+}
+.tts-btn.tts-wbw {
+  background: #f0fdf4;
+  border-color: #4ade80;
+  color: #166534;
+  min-width: 180px;
+  min-height: 48px;
+  font-size: 1.02rem;
+}
+.tts-wbw-wrap { margin-top: -6px; margin-bottom: 10px; }
+@media (max-width: 360px) {
+  .chip-he-tl { font-size: 0.62rem; max-width: 8.5em; }
+  .wbw-slot { width: 26px; height: 26px; }
+  .tts-btn.tts-wbw { min-width: 160px; padding: 10px 14px; }
+}
+
+
 
 /* Match pairs */
 .match-grid {

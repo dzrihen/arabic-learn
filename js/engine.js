@@ -54,6 +54,126 @@
     return d;
   }
 
+  /** Persian/Arabic-script word → approximate Hebrew-letter transliteration (consonants). */
+  function faLettersToHe(word) {
+    const s = String(word || "").normalize("NFC");
+    const out = [];
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "\u200c" || ch === "\u200b" || ch === "\u200d" || ch === "\ufeff" || ch === "\u0640") continue;
+      if (ch === " " || ch === "\u00a0") {
+        out.push(" ");
+        continue;
+      }
+      if (/[0-9۰-۹٠-٩.,!?;:()\-\/]/.test(ch)) {
+        out.push(ch);
+        continue;
+      }
+      const map = {
+        "ا": "א", "آ": "א׳", "أ": "א", "إ": "א", "ٱ": "א", "ء": "",
+        "ب": "ב", "پ": "פ", "ت": "ת", "ط": "ט",
+        "ث": "ס", "س": "ס", "ص": "ס",
+        "ج": "ג׳", "چ": "צ׳",
+        "ح": "ח", "ه": "ה", "ة": "ה", "ۀ": "ה", "ھ": "ה",
+        "خ": "ח",
+        "د": "ד", "ذ": "ז", "ز": "ז", "ض": "ז", "ظ": "ז",
+        "ر": "ר", "ژ": "ז׳",
+        "ش": "ש",
+        "ع": "ע", "غ": "ג", "ق": "ק",
+        "ف": "פ", "ک": "כ", "ك": "כ", "گ": "ג",
+        "ل": "ל", "م": "מ", "ن": "נ",
+        "و": "ו", "ؤ": "ו",
+        "ی": "י", "ي": "י", "ى": "י", "ئ": "י",
+        "ً": "", "ٌ": "", "ٍ": "", "َ": "", "ُ": "", "ِ": "", "ّ": "", "ْ": "", "ٰ": "", "ٓ": "", "ٔ": "", "ٕ": "",
+      };
+      if (Object.prototype.hasOwnProperty.call(map, ch)) out.push(map[ch]);
+      else if (!/[\u0600-\u06FF]/.test(ch)) out.push(ch);
+    }
+    let he = out.join("");
+    he = he.replace(/כ(?=$|[\s.,!?;:])/g, "ך")
+           .replace(/מ(?=$|[\s.,!?;:])/g, "ם")
+           .replace(/נ(?=$|[\s.,!?;:])/g, "ן")
+           .replace(/פ(?=$|[\s.,!?;:])/g, "ף")
+           .replace(/צ(?=$|[\s.,!?;:])/g, "ץ")
+           .replace(/ץ׳/g, "צ׳");
+    return he;
+  }
+
+  /** Latin translit token → Hebrew with approximate vowels. */
+  function latinToHe(tok) {
+    const s = String(tok || "").trim().toLowerCase().replace(/ʿ|ʻ|ʼ/g, "'");
+    if (!s) return "";
+    const parts = [];
+    let i = 0;
+    while (i < s.length) {
+      const two = s.slice(i, i + 2);
+      if (two === "kh") { parts.push("ח"); i += 2; continue; }
+      if (two === "sh") { parts.push("ש"); i += 2; continue; }
+      if (two === "ch") { parts.push("צ׳"); i += 2; continue; }
+      if (two === "zh") { parts.push("ז׳"); i += 2; continue; }
+      if (two === "gh") { parts.push("ג"); i += 2; continue; }
+      const ch = s[i];
+      const one = {
+        "ā": "א", "â": "א", "á": "א", "a": "ַ",
+        "e": "ֶ", "é": "ֶ",
+        "i": "י", "ī": "י", "í": "י",
+        "o": "ו", "ō": "ו", "u": "ו", "ū": "ו", "ú": "ו",
+        "b": "ב", "p": "פ", "t": "ת", "d": "ד", "r": "ר", "z": "ז", "s": "ס",
+        "f": "פ", "q": "ק", "k": "כ", "g": "ג", "l": "ל", "m": "מ", "n": "נ",
+        "h": "ה", "v": "ו", "w": "ו", "y": "י", "j": "י", "'": "ע",
+        "-": "־", " ": " ",
+      };
+      if (Object.prototype.hasOwnProperty.call(one, ch)) {
+        let piece = one[ch];
+        // Carrier alef for leading short a/e (or after maqaf/space)
+        if ((ch === "a" || ch === "e") && (parts.length === 0 || /[\s־]$/.test(parts[parts.length - 1] || ""))) {
+          piece = (ch === "a" ? "אַ" : "אֶ");
+        }
+        parts.push(piece);
+      } else if (/[0-9]/.test(ch)) parts.push(ch);
+      i++;
+    }
+    let he = parts.join("");
+    he = he.replace(/כ(?=$|[\s.,!?;:־])/g, "ך")
+           .replace(/מ(?=$|[\s.,!?;:־])/g, "ם")
+           .replace(/נ(?=$|[\s.,!?;:־])/g, "ן")
+           .replace(/פ(?=$|[\s.,!?;:־])/g, "ף")
+           .replace(/צ(?=$|[\s.,!?;:־])/g, "ץ")
+           .replace(/ץ׳/g, "צ׳");
+    return he;
+  }
+
+  function wordHeTranslits(ex, words) {
+    const w = words || [];
+    if (!w.length) return [];
+    if (Array.isArray(ex.heTranslit) && ex.heTranslit.length === w.length) return ex.heTranslit.slice();
+    if (Array.isArray(ex.wordsHeTranslit) && ex.wordsHeTranslit.length === w.length) {
+      return ex.wordsHeTranslit.slice();
+    }
+    const latin = ex && ex.translit ? String(ex.translit).trim() : "";
+    if (latin) {
+      const clean = latin.split(/\s+/).filter(Boolean).map((t) => t.replace(/[.,!?;:]+$/g, ""));
+      if (clean.length === w.length) return clean.map(latinToHe);
+    }
+    return w.map(faLettersToHe);
+  }
+
+  function makeChipEl(word, heTl, extraClass) {
+    const c = markTarget(el("button", "chip" + (extraClass ? " " + extraClass : "")));
+    c.type = "button";
+    const faSpan = el("span", "chip-fa");
+    faSpan.textContent = word == null ? "" : String(word);
+    c.appendChild(faSpan);
+    if (heTl && showTranslit()) {
+      const he = el("span", "chip-he-tl");
+      he.textContent = heTl;
+      he.setAttribute("dir", "rtl");
+      he.setAttribute("lang", "he");
+      c.appendChild(he);
+    }
+    return c;
+  }
+
   /**
    * Run a lesson. container is the mount point.
    * callbacks: { onProgress(i,total), onComplete({xp,perfect,mistakes}), onExit() }
@@ -415,106 +535,211 @@
 
     function renderListenOrder(card, ex) {
       card.appendChild(el("div", "ex-prompt", "האזן ובנה את המשפט לפי הסדר"));
-      card.appendChild(ttsButton(ex.ru, false));
-      scheduleAutoPlay(ex.ru);
-      const words = ex.words || ex.ru.split(/\s+/);
-      const answer = markTarget(el("div", "chip-answer"));
-      const bank = markTarget(el("div", "chip-bank"));
-      const picked = [];
-      const shuffled = shuffle(words.map((w, i) => ({ w, i })));
-
-      function sync() {
-        answer.innerHTML = "";
-        picked.forEach((p, pi) => {
-          const c = markTarget(el("button", "chip", escapeHtml(p.w)));
-          c.type = "button";
-          c.onclick = () => {
-            picked.splice(pi, 1);
-            sync();
-            rebuildBank();
-          };
-          answer.appendChild(c);
-        });
-      }
-
-      function rebuildBank() {
-        bank.innerHTML = "";
-        shuffled.forEach((item) => {
-          const used = picked.some((p) => p === item);
-          const c = markTarget(el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w)));
-          c.type = "button";
-          if (!used) {
-            c.onclick = () => {
-              RLSpeech.speak(item.w);
-              picked.push(item);
-              sync();
-              rebuildBank();
-            };
-          }
-          bank.appendChild(c);
-        });
-      }
-
-      sync();
-      rebuildBank();
-      card.appendChild(answer);
-      card.appendChild(bank);
-
-      const check = el("div", "check-row");
-      const btn = el("button", "btn btn-primary", "בדיקה");
-      btn.onclick = () => {
-        if (busy) return;
-        const got = picked.map((p) => p.w).join(" ");
-        const expect = words.join(" ");
-        if (got === expect || got === ex.ru) succeed(targetText(ex.ru));
-        else failAndMaybeRetry(mixedText("המשפט: ", targetText(ex.ru)), () => {
-          picked.length = 0;
-          sync();
-          rebuildBank();
-        });
-      };
-      check.appendChild(btn);
-      card.appendChild(check);
-      appendSkipAltButton(card);
+      mountChipBuild(card, ex, {
+        words: ex.words || String(ex.ru || "").split(/\s+/).filter(Boolean),
+        speakFull: ex.ru,
+        autoplay: true,
+        skipAlt: true,
+        expectExtra: [ex.ru].filter(Boolean),
+      });
     }
 
     function renderSentenceBuild(card, ex) {
       card.appendChild(el("div", "ex-prompt", ex.promptHe || "בנה את המשפט בערבית"));
       if (ex.he && ex.he !== ex.promptHe) card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
       const words = ex.words || [];
-      const targetSpeak = ex.ru || words.join(" ");
-      if (targetSpeak) {
-        card.appendChild(ttsButton(targetSpeak, false, "השמע את המשפט"));
-        scheduleAutoPlay(targetSpeak);
+      const speakFull = ex.ru || words.join(" ");
+      mountChipBuild(card, ex, {
+        words: words,
+        distractors: ex.distractors || [],
+        speakFull: speakFull,
+        autoplay: !!speakFull,
+        skipAlt: false,
+        accepted: ex.accepted || [],
+        expectExtra: [ex.ru].filter(Boolean),
+        speakOnSuccess: true,
+      });
+    }
+
+    function renderTranslate(card, ex) {
+      renderSentenceBuild(card, {
+        he: ex.he,
+        words: ex.words || (ex.ru ? ex.ru.split(/\s+/) : []),
+        distractors: ex.distractors || [],
+        ru: ex.ru,
+        translit: ex.translit,
+        heTranslit: ex.heTranslit,
+        wordsHeTranslit: ex.wordsHeTranslit,
+        accepted: ex.accepted,
+        tip: ex.tip,
+      });
+      const prompt = card.querySelector(".ex-prompt");
+      if (prompt) prompt.textContent = "תרגם לעברית → ערבית";
+    }
+
+    /**
+     * Shared chip-building UI for listen_order / sentence_build / translate_he_ru.
+     * Helpers: word-by-word playback + slots, Hebrew translit under chips,
+     * tap-to-hear bank chips, progressive hints after mistakes.
+     */
+    function mountChipBuild(card, ex, opts) {
+      opts = opts || {};
+      const words = (opts.words || []).slice();
+      const distractors = opts.distractors || [];
+      const speakFull = opts.speakFull || "";
+      const heMap = wordHeTranslits(ex, words);
+      // Map distractor words too (by text; duplicates share same tl)
+      const heByWord = {};
+      words.forEach((w, i) => {
+        heByWord[w + "::" + i] = heMap[i] || faLettersToHe(w);
+      });
+      distractors.forEach((w) => {
+        if (!Object.prototype.hasOwnProperty.call(heByWord, w)) heByWord[w] = faLettersToHe(w);
+      });
+
+      function tlFor(item) {
+        if (item && item.correctIdx != null) return heMap[item.correctIdx] || faLettersToHe(item.w);
+        return heByWord[item.w] || faLettersToHe(item.w);
       }
-      const distractors = ex.distractors || [];
+
+      // TTS row: full replay + word-by-word
+      if (speakFull) {
+        card.appendChild(ttsButton(speakFull, false));
+      }
+
+      const slots = el("div", "wbw-slots");
+      slots.setAttribute("aria-hidden", "true");
+      const slotEls = [];
+      words.forEach((_, i) => {
+        const s = el("span", "wbw-slot", String(i + 1));
+        s.dataset.i = String(i);
+        slots.appendChild(s);
+        slotEls.push(s);
+      });
+      if (words.length > 1) card.appendChild(slots);
+
+      const wbwWrap = el("div", "tts-wrap tts-wbw-wrap");
+      const wbwBtn = el("button", "tts-btn tts-wbw");
+      wbwBtn.type = "button";
+      wbwBtn.setAttribute("aria-label", "מילה־מילה");
+      wbwBtn.innerHTML =
+        '<span class="tts-ico">🐢</span><span class="tts-label">מילה־מילה 🐢</span>';
+      const wbwHint = el("div", "tts-hint", "השמעה איטית מילה־מילה");
+      wbwBtn.onclick = () => {
+        if (!words.length) return;
+        if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
+        RLSpeech.stop();
+        slotEls.forEach((s) => s.classList.remove("active"));
+        wbwBtn.classList.add("playing");
+        wbwHint.classList.remove("warn");
+        wbwHint.textContent = "משמיע מילה־מילה…";
+        const rate = 0.72;
+        RLSpeech.speakTurns(words, 500, {
+          rate: rate,
+          onTurn: function (i) {
+            slotEls.forEach((s, j) => s.classList.toggle("active", j === i));
+          },
+          onDone: function (ok) {
+            wbwBtn.classList.remove("playing");
+            slotEls.forEach((s) => s.classList.remove("active"));
+            wbwHint.textContent = ok ? "השמעה איטית מילה־מילה" : "נעצר — אפשר לנסות שוב";
+          },
+        });
+      };
+      // Full-sentence button should cancel word-by-word (speak already stops)
+      const fullBtn = card.querySelector(".tts-replay");
+      if (fullBtn) {
+        const prev = fullBtn.onclick;
+        fullBtn.onclick = function (ev) {
+          slotEls.forEach((s) => s.classList.remove("active"));
+          wbwBtn.classList.remove("playing");
+          if (typeof prev === "function") prev.call(fullBtn, ev);
+        };
+      }
+      if (words.length > 1) {
+        wbwWrap.appendChild(wbwBtn);
+        wbwWrap.appendChild(wbwHint);
+        card.appendChild(wbwWrap);
+      }
+
+      if (opts.autoplay && speakFull) scheduleAutoPlay(speakFull);
+
       const answer = markTarget(el("div", "chip-answer"));
       const bank = markTarget(el("div", "chip-bank"));
-      const pool = shuffle(words.concat(distractors).map((w, i) => ({ w, i, id: w + "_" + i })));
+      const hintNote = el("div", "chip-hint-note");
+      hintNote.hidden = true;
+
+      // Build pool: correct words keep correctIdx; distractors get negative ids
+      let pool;
+      if (distractors.length) {
+        pool = shuffle(
+          words
+            .map((w, i) => ({ w: w, i: i, id: w + "_" + i, correctIdx: i }))
+            .concat(distractors.map((w, j) => ({ w: w, i: words.length + j, id: w + "_d" + j, correctIdx: null })))
+        );
+      } else {
+        pool = shuffle(words.map((w, i) => ({ w: w, i: i, id: w + "_" + i, correctIdx: i })));
+      }
+
       const picked = [];
+      let hintCount = 0; // number of leading locked correct words after mistakes
+
+      function clearSlotsActive() {
+        slotEls.forEach((s) => s.classList.remove("active"));
+      }
+
+      function applyHintToPicked() {
+        const maxHint = Math.max(0, words.length - 1);
+        const n = Math.min(hintCount, maxHint);
+        picked.length = 0;
+        for (let k = 0; k < n; k++) {
+          const item = pool.find((it) => it.correctIdx === k);
+          if (item) picked.push(item);
+        }
+        if (n <= 0) {
+          hintNote.hidden = true;
+          hintNote.textContent = "";
+        } else if (n === 1) {
+          hintNote.hidden = false;
+          hintNote.textContent = "רמז: המילה הראשונה כבר במקום";
+        } else {
+          hintNote.hidden = false;
+          hintNote.textContent = "רמז: " + n + " המילים הראשונות כבר במקום";
+        }
+      }
 
       function sync() {
         answer.innerHTML = "";
         picked.forEach((p, pi) => {
-          const c = markTarget(el("button", "chip", escapeHtml(p.w)));
-          c.type = "button";
-          c.onclick = () => {
-            picked.splice(pi, 1);
-            sync();
-            rebuildBank();
-          };
+          const locked = pi < Math.min(hintCount, Math.max(0, words.length - 1)) && p.correctIdx === pi;
+          const c = makeChipEl(p.w, tlFor(p), locked ? "locked" : "");
+          if (locked) {
+            c.disabled = true;
+            c.setAttribute("aria-label", "נעול: " + p.w);
+          } else {
+            c.onclick = () => {
+              // only remove if not a locked hint slot
+              const lockN = Math.min(hintCount, Math.max(0, words.length - 1));
+              if (pi < lockN && picked[pi] && picked[pi].correctIdx === pi) return;
+              picked.splice(pi, 1);
+              sync();
+              rebuildBank();
+            };
+          }
           answer.appendChild(c);
         });
       }
+
       function rebuildBank() {
         bank.innerHTML = "";
         pool.forEach((item) => {
           const used = picked.some((p) => p.id === item.id);
-          const c = markTarget(el("button", "chip" + (used ? " used" : ""), escapeHtml(item.w)));
-          c.type = "button";
+          const c = makeChipEl(item.w, tlFor(item), used ? "used" : "");
           if (!used) {
             c.onclick = () => {
-              RLSpeech.speak(item.w);
+              RLSpeech.stop();
+              clearSlotsActive();
+              RLSpeech.speak(item.w, { rate: 0.85 });
               picked.push(item);
               sync();
               rebuildBank();
@@ -523,23 +748,33 @@
           bank.appendChild(c);
         });
       }
+
+      applyHintToPicked();
       sync();
       rebuildBank();
+      card.appendChild(hintNote);
       card.appendChild(answer);
       card.appendChild(bank);
+
       const check = el("div", "check-row");
       const btn = el("button", "btn btn-primary", "בדיקה");
       btn.onclick = () => {
         if (busy) return;
         const got = picked.map((p) => p.w).join(" ");
         const expect = words.join(" ");
-        const alt = (ex.accepted || []).concat([expect, ex.ru].filter(Boolean));
-        if (alt.some((a) => a === got)) {
-          if (RLProgress.get().settings.sound !== false) RLSpeech.speak(ex.ru || expect);
-          succeed(targetText(ex.ru || expect));
+        const alts = [expect]
+          .concat(opts.expectExtra || [])
+          .concat(opts.accepted || [])
+          .filter(Boolean);
+        if (alts.some((a) => a === got)) {
+          if (opts.speakOnSuccess && RLProgress.get().settings.sound !== false) {
+            RLSpeech.speak(speakFull || expect);
+          }
+          succeed(targetText(speakFull || expect));
         } else {
-          failAndMaybeRetry(mixedText("המשפט: ", targetText(ex.ru || expect)), () => {
-            picked.length = 0;
+          failAndMaybeRetry(mixedText("המשפט: ", targetText(speakFull || expect)), () => {
+            hintCount = Math.min(hintCount + 1, Math.max(0, words.length - 1));
+            applyHintToPicked();
             sync();
             rebuildBank();
           });
@@ -547,21 +782,7 @@
       };
       check.appendChild(btn);
       card.appendChild(check);
-    }
-
-    function renderTranslate(card, ex) {
-      // Chip-based translate for mobile
-      renderSentenceBuild(card, {
-        he: ex.he,
-        words: ex.words || (ex.ru ? ex.ru.split(/\s+/) : []),
-        distractors: ex.distractors || [],
-        ru: ex.ru,
-        accepted: ex.accepted,
-        tip: ex.tip,
-      });
-      // override prompt
-      const prompt = card.querySelector(".ex-prompt");
-      if (prompt) prompt.textContent = "תרגם לעברית → ערבית";
+      if (opts.skipAlt) appendSkipAltButton(card);
     }
 
     function renderDialogue(card, ex) {

@@ -371,13 +371,44 @@
   }
 
   async function speakTurns(texts, gapMs, opts) {
+    opts = opts || {};
     const list = (texts || []).map((t) => String(t || "").trim()).filter(Boolean);
     const gap = gapMs == null ? 420 : gapMs;
     for (let i = 0; i < list.length; i++) {
+      if (typeof opts.onTurn === "function") {
+        try {
+          opts.onTurn(i, list[i], list.length);
+        } catch (e) {}
+      }
       if (i + 1 < list.length) preload(list[i + 1]);
-      await speak(list[i], opts);
-      if (i < list.length - 1 && gap > 0) await sleep(gap);
+      const r = await speak(list[i], opts);
+      if (r && r.cancelled) {
+        if (typeof opts.onDone === "function") {
+          try {
+            opts.onDone(false);
+          } catch (e2) {}
+        }
+        return { ok: false, cancelled: true };
+      }
+      const genAfter = playGen;
+      if (i < list.length - 1 && gap > 0) {
+        await sleep(gap);
+        if (playGen !== genAfter) {
+          if (typeof opts.onDone === "function") {
+            try {
+              opts.onDone(false);
+            } catch (e3) {}
+          }
+          return { ok: false, cancelled: true };
+        }
+      }
     }
+    if (typeof opts.onDone === "function") {
+      try {
+        opts.onDone(true);
+      } catch (e4) {}
+    }
+    return { ok: true };
   }
 
   const Rec =
