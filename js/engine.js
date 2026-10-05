@@ -143,6 +143,23 @@
     return he;
   }
 
+
+  /** Lookup curated Hebrew translit; try ZWNJ/space variants. */
+  function lookupHeTranslit(word) {
+    const map = global.RL_HE_TRANSLIT;
+    if (!map || word == null) return null;
+    const w = String(word);
+    if (map[w]) return map[w];
+    const noZ = w.replace(/\u200c/g, "");
+    if (map[noZ]) return map[noZ];
+    const sp = w.replace(/\u200c/g, " ");
+    if (map[sp]) return map[sp];
+    // ye/ke normalize
+    const norm = noZ.replace(/\u064a/g, "\u06cc").replace(/\u0643/g, "\u06a9");
+    if (map[norm]) return map[norm];
+    return null;
+  }
+
   function wordHeTranslits(ex, words) {
     const w = words || [];
     if (!w.length) return [];
@@ -151,11 +168,17 @@
       return ex.wordsHeTranslit.slice();
     }
     const latin = ex && ex.translit ? String(ex.translit).trim() : "";
+    let latinHe = null;
     if (latin) {
       const clean = latin.split(/\s+/).filter(Boolean).map((t) => t.replace(/[.,!?;:]+$/g, ""));
-      if (clean.length === w.length) return clean.map(latinToHe);
+      if (clean.length === w.length) latinHe = clean.map(latinToHe);
     }
-    return w.map(faLettersToHe);
+    return w.map(function (word, i) {
+      const hit = lookupHeTranslit(word);
+      if (hit) return hit;
+      if (latinHe) return latinHe[i];
+      return faLettersToHe(word);
+    });
   }
 
   function makeChipEl(word, heTl, extraClass) {
@@ -594,12 +617,14 @@
         heByWord[w + "::" + i] = heMap[i] || faLettersToHe(w);
       });
       distractors.forEach((w) => {
-        if (!Object.prototype.hasOwnProperty.call(heByWord, w)) heByWord[w] = faLettersToHe(w);
+        if (!Object.prototype.hasOwnProperty.call(heByWord, w)) {
+          heByWord[w] = lookupHeTranslit(w) || faLettersToHe(w);
+        }
       });
 
       function tlFor(item) {
-        if (item && item.correctIdx != null) return heMap[item.correctIdx] || faLettersToHe(item.w);
-        return heByWord[item.w] || faLettersToHe(item.w);
+        if (item && item.correctIdx != null) return heMap[item.correctIdx] || lookupHeTranslit(item.w) || faLettersToHe(item.w);
+        return heByWord[item.w] || lookupHeTranslit(item.w) || faLettersToHe(item.w);
       }
 
       // TTS row: full replay + word-by-word
