@@ -627,7 +627,7 @@
         return heByWord[item.w] || lookupHeTranslit(item.w) || faLettersToHe(item.w);
       }
 
-      // TTS row: full replay + word-by-word
+      // TTS row: normal replay + slow sentence + word-by-word
       if (speakFull) {
         card.appendChild(ttsButton(speakFull, false));
       }
@@ -643,48 +643,90 @@
       });
       if (words.length > 1) card.appendChild(slots);
 
-      const wbwWrap = el("div", "tts-wrap tts-wbw-wrap");
-      const wbwBtn = el("button", "tts-btn tts-wbw");
-      wbwBtn.type = "button";
-      wbwBtn.setAttribute("aria-label", "מילה־מילה");
-      wbwBtn.innerHTML =
-        '<span class="tts-ico">🐢</span><span class="tts-label">מילה־מילה 🐢</span>';
-      const wbwHint = el("div", "tts-hint", "השמעה איטית מילה־מילה");
-      wbwBtn.onclick = () => {
-        if (!words.length) return;
-        if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
-        RLSpeech.stop();
-        slotEls.forEach((s) => s.classList.remove("active"));
-        wbwBtn.classList.add("playing");
-        wbwHint.classList.remove("warn");
-        wbwHint.textContent = "משמיע מילה־מילה…";
-        const rate = 0.72;
-        RLSpeech.speakTurns(words, 500, {
-          rate: rate,
-          onTurn: function (i) {
-            slotEls.forEach((s, j) => s.classList.toggle("active", j === i));
-          },
-          onDone: function (ok) {
-            wbwBtn.classList.remove("playing");
-            slotEls.forEach((s) => s.classList.remove("active"));
-            wbwHint.textContent = ok ? "השמעה איטית מילה־מילה" : "נעצר — אפשר לנסות שוב";
-          },
-        });
-      };
-      // Full-sentence button should cancel word-by-word (speak already stops)
+      const helperRow = el("div", "tts-helper-row");
+
+      // Slow full sentence (dedicated edge-tts -35% clip when available)
+      if (speakFull) {
+        const slowWrap = el("div", "tts-wrap tts-slow-wrap");
+        const slowBtn = el("button", "tts-btn tts-slow");
+        slowBtn.type = "button";
+        slowBtn.setAttribute("aria-label", "השמע לאט");
+        slowBtn.innerHTML =
+          '<span class="tts-ico">🐢</span><span class="tts-label">🐢 איטי</span>';
+        const slowHint = el("div", "tts-hint", "משפט שלם — לאט");
+        slowBtn.onclick = () => {
+          if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
+          RLSpeech.stop();
+          slotEls.forEach((s) => s.classList.remove("active"));
+          if (wbwBtn) wbwBtn.classList.remove("playing");
+          slowBtn.classList.add("playing");
+          slowHint.textContent = "משמיע לאט…";
+          const play = RLSpeech.speakSlow
+            ? RLSpeech.speakSlow(speakFull)
+            : RLSpeech.speak(speakFull, { rate: 0.7 });
+          play.then((r) => {
+            slowBtn.classList.remove("playing");
+            slowHint.textContent =
+              r && r.ok ? "משפט שלם — לאט" : "לא נשמע? לחצו שוב";
+          });
+        };
+        slowWrap.appendChild(slowBtn);
+        slowWrap.appendChild(slowHint);
+        helperRow.appendChild(slowWrap);
+      }
+
+      // Word-by-word with dedicated slow word clips + real pauses
+      let wbwBtn = null;
+      if (words.length > 1) {
+        const wbwWrap = el("div", "tts-wrap tts-wbw-wrap");
+        wbwBtn = el("button", "tts-btn tts-wbw");
+        wbwBtn.type = "button";
+        wbwBtn.setAttribute("aria-label", "מילה־מילה");
+        wbwBtn.innerHTML =
+          '<span class="tts-ico">1️⃣</span><span class="tts-label">מילה־מילה</span>';
+        const wbwHint = el("div", "tts-hint", "מילה־מילה עם הפסקות");
+        wbwBtn.onclick = () => {
+          if (!words.length) return;
+          if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
+          RLSpeech.stop();
+          slotEls.forEach((s) => s.classList.remove("active"));
+          const slowPlaying = helperRow.querySelector(".tts-slow");
+          if (slowPlaying) slowPlaying.classList.remove("playing");
+          wbwBtn.classList.add("playing");
+          wbwHint.classList.remove("warn");
+          wbwHint.textContent = "משמיע מילה־מילה…";
+          // rate 1.0 — clips are already slowed in edge-tts (-30%)
+          RLSpeech.speakTurns(words, 550, {
+            rate: 1.0,
+            ttsRate: 0.7,
+            onTurn: function (i) {
+              slotEls.forEach((s, j) => s.classList.toggle("active", j === i));
+            },
+            onDone: function (ok) {
+              wbwBtn.classList.remove("playing");
+              slotEls.forEach((s) => s.classList.remove("active"));
+              wbwHint.textContent = ok
+                ? "מילה־מילה עם הפסקות"
+                : "נעצר — אפשר לנסות שוב";
+            },
+          });
+        };
+        wbwWrap.appendChild(wbwBtn);
+        wbwWrap.appendChild(wbwHint);
+        helperRow.appendChild(wbwWrap);
+      }
+
+      if (helperRow.childNodes.length) card.appendChild(helperRow);
+
+      // Normal replay cancels helpers
       const fullBtn = card.querySelector(".tts-replay");
       if (fullBtn) {
         const prev = fullBtn.onclick;
         fullBtn.onclick = function (ev) {
           slotEls.forEach((s) => s.classList.remove("active"));
-          wbwBtn.classList.remove("playing");
+          helperRow.querySelectorAll(".tts-btn").forEach((b) => b.classList.remove("playing"));
           if (typeof prev === "function") prev.call(fullBtn, ev);
         };
-      }
-      if (words.length > 1) {
-        wbwWrap.appendChild(wbwBtn);
-        wbwWrap.appendChild(wbwHint);
-        card.appendChild(wbwWrap);
       }
 
       if (opts.autoplay && speakFull) scheduleAutoPlay(speakFull);

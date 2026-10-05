@@ -588,7 +588,32 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
   min-height: 48px;
   font-size: 1.02rem;
 }
-.tts-wbw-wrap { margin-top: -6px; margin-bottom: 10px; }
+.tts-wbw-wrap { margin-top: 0; margin-bottom: 0; }
+
+.tts-helper-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin: 4px 0 12px;
+}
+.tts-helper-row .tts-wrap { margin: 0; }
+.tts-btn.tts-slow {
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #c2410c;
+  min-width: 120px;
+  min-height: 48px;
+  font-size: 1.02rem;
+}
+.tts-btn.tts-wbw {
+  min-width: 140px;
+}
+@media (max-width: 360px) {
+  .tts-helper-row { gap: 8px; }
+  .tts-btn.tts-slow, .tts-btn.tts-wbw { min-width: 110px; padding: 10px 12px; font-size: 0.95rem; }
+}
+
 @media (max-width: 360px) {
   .chip-he-tl { font-size: 0.62rem; max-width: 8.5em; }
   .wbw-slot { width: 26px; height: 26px; }
