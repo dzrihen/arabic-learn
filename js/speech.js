@@ -227,6 +227,10 @@
         const done = (ok) => {
           if (settled) return;
           settled = true;
+          if (!ok) {
+            // never let a late-loading clip start after we fall back to TTS
+            try { a.onended = null; a.onerror = null; a.oncanplay = null; a.pause(); a.removeAttribute("src"); a.load(); } catch (e) {}
+          }
           if (currentAudio === a) currentAudio = null;
           resolve({ ok: !!ok, source: "file", cancelled: gen != null && gen !== playGen });
         };
@@ -563,4 +567,44 @@
     hasUserGesture: () => userGesture,
     getRate: learnerRate,
   };
+
+  /* Central audio guard: identical play requests within 600ms are collapsed into one
+     (protects against autoplay + tap / double render / double listeners). Each new
+     distinct request already cancels the previous clip + TTS inside speak(). */
+  (function () {
+    const S = global.RLSpeech;
+    if (!S || S.__guarded) return;
+    S.__guarded = true;
+    const DEDUPE_MS = 600;
+    let last = { key: "", t: 0, p: null };
+    const stats = (global.__RL_AUDIO_STATS = global.__RL_AUDIO_STATS || { requests: 0, deduped: 0 });
+    function guard(kind, text, run) {
+      const key = kind + "|" + (Array.isArray(text) ? text.join("\u0001") : String(text || "").trim());
+      const now = Date.now();
+      stats.requests++;
+      if (last.p && last.key === key && now - last.t < DEDUPE_MS) {
+        stats.deduped++;
+        return last.p;
+      }
+      const p = Promise.resolve(run());
+      last = { key: key, t: now, p: p };
+      return p;
+    }
+    const raw = { speak: S.speak, autoPlay: S.autoPlay, speakSlow: S.speakSlow, speakTurns: S.speakTurns, stop: S.stop };
+    S.speak = function (text, opts) {
+      const k = "n" + (opts && opts.rate != null ? ":" + opts.rate : "") + (opts && opts.audioId ? ":" + opts.audioId : "");
+      return guard(k, text, () => raw.speak(text, opts));
+    };
+    S.autoPlay = function (text, opts) {
+      // shares the "n" key with speak(): autoplay + immediate replay tap = one playback
+      const k = "n" + (opts && opts.rate != null ? ":" + opts.rate : "");
+      let viaAuto = false;
+      const p = guard(k, text, () => { viaAuto = true; return raw.autoPlay(text, opts); });
+      if (viaAuto) return p;
+      return p.then((r) => (r && "blocked" in r ? r : { ok: !!(r && r.ok), blocked: false, source: r && r.source }));
+    };
+    if (raw.speakSlow) S.speakSlow = function (text, opts) { return guard("slow", text, () => raw.speakSlow(text, opts)); };
+    S.speakTurns = function (texts, gap, opts) { return guard("turns", texts, () => raw.speakTurns(texts, gap, opts)); };
+    S.stop = function () { last = { key: "", t: 0, p: null }; return raw.stop(); };
+  })();
 })(window);

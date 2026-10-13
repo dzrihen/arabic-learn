@@ -1011,3 +1011,8 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
 .celeb .tip-card { max-width: 420px; margin-left: auto; margin-right: auto; }
 .reveal-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .reveal-row .btn { flex: 1 1 140px; }
+.mw-gap { color: var(--blue, #1d6fe0); font-weight: 800; }
+.he-big { font-size: 1.15rem; font-weight: 700; }
+.tf-he { font-size: 1.05rem; margin-top: 8px; }
+.tf-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choice .he-tl-line { font-size: 0.75rem; text-align: inherit; }

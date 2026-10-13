@@ -331,6 +331,13 @@
     let exercises = (lesson.exercises || []).map(function (ex) {
       return Object.assign({}, ex);
     });
+    try {
+      if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
+      if (lesson._forceType) {
+        const forced = buildNewType(lesson._forceType, lessonSentencePool(exercises), exercises.filter((e) => e && e.type === "dialogue"));
+        if (forced) exercises[0] = forced;
+      }
+    } catch (e) {}
     let idx = 0;
     let mistakes = 0;
     let hearts = 5;
@@ -555,6 +562,10 @@
       else if (type === "sentence_build") renderSentenceBuild(card, ex);
       else if (type === "translate_he_ru") renderTranslate(card, ex);
       else if (type === "dialogue") renderDialogue(card, ex);
+      else if (type === "true_false") renderTrueFalse(card, ex);
+      else if (type === "he_pick") renderHePick(card, ex);
+      else if (type === "missing_word") renderMissingWord(card, ex);
+      else if (type === "reply_pick") renderReplyPick(card, ex);
       else if (type === "fill_blank") renderFillBlank(card, ex);
       else if (type === "match_pairs") renderMatch(card, ex);
       else if (type === "speak_repeat") renderSpeak(card, ex);
@@ -671,6 +682,215 @@
     }
 
     // ——— Exercise renderers ———
+
+    // ——— New exercise types (generated from the lesson's own sentences) ———
+    // true_false · reply_pick · missing_word · he_pick — mixed in by replacing a few
+    // existing items so lessons don't get longer.
+    function lessonSentencePool(list) {
+      const out = [];
+      const seen = {};
+      const add = (ru, he) => {
+        ru = String(ru || "").trim();
+        he = String(he || "").trim();
+        if (!ru || !he || seen[ru]) return;
+        seen[ru] = 1;
+        out.push({ ru: ru, he: he });
+      };
+      (list || []).forEach((ex) => {
+        if (!ex) return;
+        if (ex.ru && ex.he) add(ex.ru, ex.he);
+        if (ex.ru && Array.isArray(ex.choices)) {
+          const c = ex.choices.find((x) => x && x.correct);
+          if (c && c.he) add(ex.ru, c.he);
+        }
+        (ex.pairs || []).forEach((p) => p && add(p.ru, p.he));
+        (ex.turns || []).forEach((t) => t && add(t.ru, t.he));
+      });
+      return out;
+    }
+
+    function mixNewTypes(list) {
+      const pool = lessonSentencePool(list);
+      if (pool.length < 4 || list.length < 6) return list;
+      const replaceable = [];
+      list.forEach((ex, i) => {
+        if (i === 0 || !ex) return;
+        if (/^(read_choice|listen_choice|translate_he_ru|sentence_build|match_pairs)$/.test(ex.type)) replaceable.push(i);
+      });
+      // ~1 in 4 exercises, at most 4 per lesson
+      const n = Math.min(4, Math.max(1, Math.round(list.length / 4)), replaceable.length);
+      const picks = shuffle(replaceable.slice()).slice(0, n).sort((a, b) => a - b);
+      const dialogs = list.filter((e) => e && e.type === "dialogue" && Array.isArray(e.turns) && e.turns.length >= 2);
+      const kinds = shuffle(["true_false", "reply_pick", "missing_word", "he_pick"]);
+      const out = list.slice();
+      picks.forEach((i, k) => {
+        let kind = kinds[k % kinds.length];
+        if (kind === "reply_pick" && !dialogs.length) kind = "he_pick";
+        const made = buildNewType(kind, pool, dialogs);
+        if (made) out[i] = made;
+      });
+      return out;
+    }
+
+    function otherItems(pool, notRu, count) {
+      return shuffle(pool.filter((p) => p.ru !== notRu)).slice(0, count);
+    }
+
+    function buildNewType(kind, pool, dialogs) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (kind === "true_false") {
+        const truth = Math.random() < 0.5;
+        const wrong = otherItems(pool, pick.ru, 1)[0];
+        if (!truth && !wrong) return null;
+        return { type: "true_false", ru: pick.ru, he: truth ? pick.he : wrong.he, correctHe: pick.he, truth: truth, _gen: 1 };
+      }
+      if (kind === "he_pick") {
+        const others = otherItems(pool, pick.ru, 3);
+        if (others.length < 2) return null;
+        return { type: "he_pick", ru: pick.ru, he: pick.he, options: shuffle([pick.ru].concat(others.map((o) => o.ru))), _gen: 1 };
+      }
+      if (kind === "missing_word") {
+        const cands = pool.filter((p) => p.ru.split(/\s+/).length >= 3);
+        const s = cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
+        if (!s) return null;
+        const toks = s.ru.split(/\s+/);
+        const core = (w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+        const idxs = toks.map((w, i) => i).filter((i) => core(toks[i]).length >= 2);
+        if (!idxs.length) return null;
+        const gi = idxs[Math.floor(Math.random() * idxs.length)];
+        const answer = core(toks[gi]);
+        const bag = {};
+        pool.forEach((p) => p.ru.split(/\s+/).forEach((w) => { const c = core(w); if (c.length >= 2 && c.toLowerCase() !== answer.toLowerCase()) bag[c] = 1; }));
+        const distract = shuffle(Object.keys(bag)).slice(0, 3);
+        if (distract.length < 2) return null;
+        return { type: "missing_word", ru: s.ru, he: s.he, tokens: toks, gap: gi, answer: answer, options: shuffle([answer].concat(distract)), _gen: 1 };
+      }
+      if (kind === "reply_pick") {
+        const d = dialogs[Math.floor(Math.random() * dialogs.length)];
+        const pairs = [];
+        for (let i = 0; i + 1 < d.turns.length; i++) {
+          if (d.turns[i].speaker !== "user" && d.turns[i + 1].speaker === "user") pairs.push(i);
+        }
+        if (!pairs.length) return null;
+        const qi = pairs[Math.floor(Math.random() * pairs.length)];
+        const q = d.turns[qi], a = d.turns[qi + 1];
+        const wrong = shuffle((d.distractors || []).filter((x) => x && x !== a.ru)).slice(0, 2);
+        otherItems(pool, a.ru, 4).forEach((o) => { if (wrong.length < 3 && o.ru !== q.ru && wrong.indexOf(o.ru) < 0) wrong.push(o.ru); });
+        if (wrong.length < 2) return null;
+        return { type: "reply_pick", ru: q.ru, he: q.he || "", answer: a.ru, answerHe: a.he || "", options: shuffle([a.ru].concat(wrong)), _gen: 1 };
+      }
+      return null;
+    }
+
+    function targetOptionButton(text, onPick) {
+      const b = markTarget(el("button", "choice ru", escapeHtml(text)));
+      b.type = "button";
+      const tl = sentenceTlEl(text, "choice-tl");
+      if (tl) b.appendChild(tl);
+      b.onclick = () => onPick(b);
+      return b;
+    }
+
+    function renderTrueFalse(card, ex) {
+      card.appendChild(el("div", "ex-prompt", "נכון או לא נכון? האם התרגום מתאים למשפט"));
+      card.appendChild(ttsButton(ex.ru, false));
+      card.appendChild(markTarget(el("div", "ru-big", escapeHtml(ex.ru))));
+      const tl = sentenceTlEl(ex.ru, "reveal-tl");
+      if (tl) card.appendChild(tl);
+      card.appendChild(el("div", "he-prompt tf-he", "«" + escapeHtml(ex.he) + "»"));
+      scheduleAutoPlay(ex.ru);
+      const box = el("div", "choices tf-choices");
+      [["✓ נכון", true], ["✗ לא נכון", false]].forEach((o) => {
+        const b = el("button", "choice", o[0]);
+        b.type = "button";
+        b.onclick = () => {
+          if (busy) return;
+          if (o[1] === ex.truth) {
+            b.classList.add("correct");
+            succeed(mixedText(targetText(ex.ru), " = ", ex.correctHe));
+          } else {
+            b.classList.add("wrong");
+            failAndMaybeRetry(mixedText("התרגום הנכון: ", targetText(ex.ru), " = ", ex.correctHe), null);
+          }
+        };
+        box.appendChild(b);
+      });
+      card.appendChild(box);
+    }
+
+    function renderHePick(card, ex) {
+      card.appendChild(el("div", "ex-prompt", "איך אומרים את זה? בחר את המשפט הנכון"));
+      card.appendChild(el("div", "he-prompt he-big", escapeHtml(ex.he)));
+      const box = el("div", "choices");
+      ex.options.forEach((opt) => {
+        box.appendChild(targetOptionButton(opt, (b) => {
+          if (busy) return;
+          RLSpeech.speak(opt);
+          if (opt === ex.ru) {
+            b.classList.add("correct");
+            succeed(mixedText(targetText(ex.ru), " = ", ex.he));
+          } else {
+            b.classList.add("wrong");
+            failAndMaybeRetry(mixedText("התשובה: ", targetText(ex.ru)), null);
+          }
+        }));
+      });
+      card.appendChild(box);
+    }
+
+    function renderMissingWord(card, ex) {
+      card.appendChild(el("div", "ex-prompt", "איזו מילה חסרה במשפט?"));
+      card.appendChild(ttsButton(ex.ru, false));
+      const line = markTarget(el("div", "ru-big"));
+      line.innerHTML = ex.tokens
+        .map((w, i) => (i === ex.gap ? w.replace(ex.answer, '<span class="mw-gap">____</span>') : escapeHtml(w)))
+        .join(" ");
+      card.appendChild(line);
+      card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
+      const box = el("div", "choices mw-choices");
+      ex.options.forEach((opt) => {
+        box.appendChild(targetOptionButton(opt, (b) => {
+          if (busy) return;
+          if (opt === ex.answer) {
+            b.classList.add("correct");
+            const gap = line.querySelector(".mw-gap");
+            if (gap) gap.textContent = ex.answer;
+            RLSpeech.speak(ex.ru);
+            succeed(mixedText(targetText(ex.ru), " = ", ex.he));
+          } else {
+            b.classList.add("wrong");
+            failAndMaybeRetry(mixedText("המילה: ", targetText(ex.answer)), null);
+          }
+        }));
+      });
+      card.appendChild(box);
+    }
+
+    function renderReplyPick(card, ex) {
+      card.appendChild(el("div", "ex-prompt", "מה עונים? בחר את התגובה המתאימה"));
+      const q = markTarget(el("div", "bubble a", escapeHtml(ex.ru)));
+      const qtl = sentenceTlEl(ex.ru, "bubble-tl");
+      if (qtl) q.appendChild(qtl);
+      card.appendChild(q);
+      if (ex.he) card.appendChild(el("div", "he-prompt", escapeHtml(ex.he)));
+      card.appendChild(ttsButton(ex.ru, false));
+      scheduleAutoPlay(ex.ru);
+      const box = el("div", "choices");
+      ex.options.forEach((opt) => {
+        box.appendChild(targetOptionButton(opt, (b) => {
+          if (busy) return;
+          if (opt === ex.answer) {
+            b.classList.add("correct");
+            RLSpeech.speak(opt);
+            succeed(mixedText(targetText(ex.answer), ex.answerHe ? " = " + ex.answerHe : ""));
+          } else {
+            b.classList.add("wrong");
+            failAndMaybeRetry(mixedText("תגובה מתאימה: ", targetText(ex.answer)), null);
+          }
+        }));
+      });
+      card.appendChild(box);
+    }
 
     function renderListenChoice(card, ex) {
       card.appendChild(el("div", "ex-prompt", "מה שמעת? בחר את המשמעות הנכונה"));
