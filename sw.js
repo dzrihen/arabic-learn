@@ -1,5 +1,5 @@
 /* Arabic Learn v19 — network-first shell; progress lives in localStorage + cloud sync (not SW caches) */
-const CACHE_NAME = "arabic-learn-v19";
+const CACHE_NAME = "arabic-learn-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,6 +10,8 @@ const APP_SHELL = [
   "./js/srs.js",
   "./js/cloud-sync.js",
   "./js/engine.js",
+  "./js/tips.js",
+  "./data/tips.js",
   "./js/conversation.js",
   "./js/app.js",
   "./data/meta.js",

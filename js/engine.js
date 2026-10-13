@@ -44,14 +44,104 @@
     return fragment;
   }
 
-  function showTranslit() {
-    return !!(RLProgress.get().settings && RLProgress.get().settings.translit);
+  // --- Hebrew transliteration for whole sentences (curated map + letter fallback) ---
+  function sentenceHeTranslit(text) {
+    return String(text || "").replace(/؟/g, "?").replace(/،/g, ",").split(/\s+/).map(function (tok) {
+      const core = tok.replace(/^[«»"'()\[\].,!?؛:…\-]+|[«»"'()\[\].,!?؛:…\-]+$/g, "");
+      if (!core) return tok.replace(/[^?!,]/g, "");
+      const tail = (tok.slice(tok.lastIndexOf(core) + core.length).match(/[?!,]/) || [""])[0];
+      return (lookupHeTranslit(core) || faLettersToHe(core)) + tail;
+    }).filter(Boolean).join(" ");
   }
 
+  // --- Transliteration fading (auto / always / never) ---
+  // auto: A1 + A2 units 1-59 = full; A2 unit 60+ and B1 = only words seen < TL_KNOWN_N times
+  // (tap "•••" to reveal); B2/C1/C2 = hidden, tap "👁 תעתיק" to reveal.
+  const TL_SEEN_KEY = "rl_tl_seen_v1";
+  const TL_KNOWN_N = 5;
+  const TL_A2_LATE_UNIT = 60;
+  let tlPolicy = "full";
+  function tlMode() {
+    const s = (RLProgress.get() && RLProgress.get().settings) || {};
+    if (s.translitMode === "always" || s.translitMode === "never" || s.translitMode === "auto") return s.translitMode;
+    return s.translit === false ? "never" : "auto";
+  }
+  function showTranslit() {
+    return tlMode() !== "never";
+  }
+  function policyForLesson(lesson) {
+    const id = String((lesson && lesson.id) || "").toLowerCase();
+    const m = id.match(/^(a1|a2|b1|b2|c1|c2)-u(\d+)/);
+    let lv = m ? m[1].toUpperCase() : String((lesson && lesson.level) || "").toUpperCase();
+    if (!/^(A1|A2|B1|B2|C1|C2)$/.test(lv)) {
+      try { lv = String(RLProgress.get().level || "A1").toUpperCase(); } catch (e) { lv = "A1"; }
+    }
+    const unit = m ? parseInt(m[2], 10) : 0;
+    if (lv === "A1") return "full";
+    if (lv === "A2") return m && unit < TL_A2_LATE_UNIT ? "full" : "new";
+    if (lv === "B1") return "new";
+    return "tap";
+  }
+  function tlNorm(w) {
+    return String(w || "").toLowerCase().replace(/\u200c/g, "").replace(/[^\p{L}\p{M}]/gu, "");
+  }
+  function tlSeen() {
+    try { return JSON.parse(localStorage.getItem(TL_SEEN_KEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function tlBump(words) {
+    try {
+      const s = tlSeen();
+      (words || []).forEach((w) => { const k = tlNorm(w); if (k) s[k] = (s[k] || 0) + 1; });
+      localStorage.setItem(TL_SEEN_KEY, JSON.stringify(s));
+    } catch (e) {}
+  }
+  function tlWordShown(word) {
+    const mode = tlMode();
+    if (mode === "always") return true;
+    if (mode === "never") return false;
+    if (tlPolicy === "full") return true;
+    if (tlPolicy === "tap") return false;
+    return (tlSeen()[tlNorm(word)] || 0) < TL_KNOWN_N;
+  }
   function translitLine(t) {
     if (!t || !showTranslit()) return null;
     const d = el("div", "translit", t);
+    if (tlMode() === "auto" && tlPolicy !== "full") {
+      const real = d.textContent;
+      d.textContent = "👁 תעתיק";
+      d.classList.add("tl-tap");
+      d.onclick = () => { d.textContent = real; d.classList.remove("tl-tap"); };
+    }
     return d;
+  }
+  /** Per-word Hebrew transliteration line for a target sentence, with fading. */
+  function sentenceTlEl(text, cls) {
+    if (!text || !showTranslit() || typeof sentenceHeTranslit !== "function") return null;
+    const box = el("div", "he-tl-line" + (cls ? " " + cls : ""));
+    box.setAttribute("dir", "rtl");
+    box.setAttribute("lang", "he");
+    const toks = String(text).split(/\s+/).filter(Boolean);
+    const parts = toks.map((w) => ({ w: w, tl: sentenceHeTranslit(w) })).filter((p) => p.tl);
+    if (!parts.length) return null;
+    if (tlMode() === "auto" && tlPolicy === "tap") {
+      const btn = el("button", "tl-reveal-btn", "👁 תעתיק");
+      btn.type = "button";
+      btn.onclick = (ev) => { ev.stopPropagation(); box.textContent = parts.map((p) => p.tl).join(" "); };
+      box.appendChild(btn);
+      return box;
+    }
+    parts.forEach((p, i) => {
+      const s = el("span", "tl-w");
+      if (tlWordShown(p.w)) s.textContent = p.tl;
+      else {
+        s.textContent = "•••";
+        s.classList.add("tl-hidden");
+        s.onclick = (ev) => { ev.stopPropagation(); s.textContent = p.tl; s.classList.remove("tl-hidden"); };
+      }
+      box.appendChild(s);
+      if (i < parts.length - 1) box.appendChild(document.createTextNode(" "));
+    });
+    return box;
   }
 
   /** Persian/Arabic-script word → approximate Hebrew-letter transliteration (consonants). */
@@ -189,7 +279,17 @@
     c.appendChild(faSpan);
     if (heTl && showTranslit()) {
       const he = el("span", "chip-he-tl");
-      he.textContent = heTl;
+      if (tlWordShown(word)) he.textContent = heTl;
+      else {
+        he.textContent = "•••";
+        he.classList.add("tl-hidden");
+        const reveal = (ev) => { if (ev) ev.preventDefault(); he.textContent = heTl; he.classList.remove("tl-hidden"); };
+        c.addEventListener("contextmenu", reveal);
+        let lp = null;
+        c.addEventListener("touchstart", () => { lp = setTimeout(reveal, 450); }, { passive: true });
+        c.addEventListener("touchend", () => clearTimeout(lp));
+        c.addEventListener("touchmove", () => clearTimeout(lp));
+      }
       he.setAttribute("dir", "rtl");
       he.setAttribute("lang", "he");
       c.appendChild(he);
@@ -224,6 +324,9 @@
   }
 
   function runLesson(lesson, container, callbacks) {
+    tlPolicy = policyForLesson(lesson);
+    if (global.RLTips) RLTips.load();
+    let tipShown = false;
     // Shallow-copy slots so in-place skip swaps do not mutate lesson data permanently
     let exercises = (lesson.exercises || []).map(function (ex) {
       return Object.assign({}, ex);
@@ -263,6 +366,19 @@
       '<div class="fb-title"></div><div class="fb-detail"></div><button type="button" class="btn btn-primary fb-next">המשך</button>';
     document.body.appendChild(feedback);
 
+    // Keep long exercise content scrollable above the fixed feedback panel.
+    function syncFbSpace() {
+      if (!feedback.isConnected || !feedback.classList.contains("show")) {
+        stage.style.paddingBottom = "";
+        return;
+      }
+      const h = feedback.getBoundingClientRect().height;
+      stage.style.paddingBottom = Math.ceil(h + 16) + "px";
+    }
+    try {
+      if (global.ResizeObserver) new ResizeObserver(syncFbSpace).observe(feedback);
+    } catch (e) {}
+
     function updateHearts() {
       heartsEl.innerHTML = "";
       for (let i = 0; i < 5; i++) {
@@ -286,6 +402,8 @@
       else detailEl.textContent = detail || "";
       const btn = feedback.querySelector(".fb-next");
       btn.textContent = ok ? "המשך" : "ננסה שוב / המשך";
+      syncFbSpace();
+      requestAnimationFrame(syncFbSpace);
       // SRS Easy button
       let easy = feedback.querySelector(".fb-easy");
       const ex = exercises[idx];
@@ -305,6 +423,7 @@
             ex._srsGraded = true;
           } catch (e) {}
           feedback.classList.remove("show");
+        syncFbSpace();
           busy = false;
           onNext();
         };
@@ -314,6 +433,7 @@
       }
       btn.onclick = () => {
         feedback.classList.remove("show");
+        syncFbSpace();
         busy = false;
         onNext();
       };
@@ -328,6 +448,25 @@
         if (callbacks.onComplete) {
           callbacks.onComplete({ xp: perfect ? xp + 5 : xp, perfect, mistakes });
         }
+        return;
+      }
+      if (!tipShown && exercises.length >= 6 && idx === Math.floor(exercises.length / 2) && global.RLTips) {
+        tipShown = true;
+        RLTips.pick(lesson).then((tip) => {
+          if (!tip) return render();
+          RLSpeech.stop && RLSpeech.stop();
+          stage.innerHTML = "";
+          const card = el("div", "card exercise-card tip-interstitial");
+          card.appendChild(RLTips.cardEl(tip, "טיפ באמצע הדרך"));
+          const go = el("button", "btn btn-primary", "הבנתי — ממשיכים");
+          go.type = "button";
+          go.style.marginTop = "14px";
+          go.style.width = "100%";
+          go.onclick = () => render();
+          card.appendChild(go);
+          stage.appendChild(card);
+          window.scrollTo(0, 0);
+        }).catch(() => render());
         return;
       }
       render();
@@ -376,6 +515,10 @@
     }
 
     function succeed(detail) {
+      try {
+        const cx = exercises[idx];
+        if (cx) tlBump(String(cx.ru || (cx.words || []).join(" ") || "").split(/\s+/));
+      } catch (e) {}
       try {
         if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], true);
       } catch (e) {}
@@ -485,6 +628,38 @@
     }
 
     function appendSkipAltButton(card) {
+      const curEx = exercises[idx];
+      const heardText = curEx && (curEx.ru || (curEx.words || []).join(" "));
+      if (heardText) {
+        const rrow = el("div", "check-row reveal-row");
+        rrow.style.marginTop = "10px";
+        const rb = el("button", "btn btn-ghost", "👁 אי אפשר לשמוע — הצג כתוב");
+        rb.type = "button";
+        rb.onclick = () => {
+          if (card.querySelector(".heard-reveal")) return;
+          const box = el("div", "heard-reveal");
+          box.appendChild(markTarget(el("div", "ru-big", escapeHtml(heardText))));
+          const tl = sentenceTlEl(heardText, "reveal-tl");
+          if (tl) box.appendChild(tl);
+          rrow.replaceWith(box);
+        };
+        if (!card.querySelector(".tts-slow")) {
+          const sb = el("button", "btn btn-ghost tts-slow-inline", "🐢 איטי");
+          sb.type = "button";
+          sb.setAttribute("aria-label", "השמע לאט");
+          sb.onclick = () => {
+            if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
+            RLSpeech.stop && RLSpeech.stop();
+            if (RLSpeech.speakSlow) RLSpeech.speakSlow(heardText);
+            else RLSpeech.speak(heardText, { rate: 0.65 });
+          };
+          rrow.appendChild(sb);
+        }
+        rrow.appendChild(rb);
+        const tts = card.querySelector(".tts-wrap");
+        if (tts && tts.parentNode) tts.parentNode.insertBefore(rrow, tts.nextSibling);
+        else card.insertBefore(rrow, card.firstChild ? card.firstChild.nextSibling : null);
+      }
       const row = el("div", "check-row skip-alt-row");
       row.style.marginTop = "14px";
       const btn = el("button", "btn btn-ghost", "דלג — תרגיל אחר");
@@ -652,7 +827,7 @@
         slowBtn.type = "button";
         slowBtn.setAttribute("aria-label", "השמע לאט");
         slowBtn.innerHTML =
-          '<span class="tts-ico">🐢</span><span class="tts-label">🐢 איטי</span>';
+          '<span class="tts-ico">🐢</span><span class="tts-label">איטי</span>';
         const slowHint = el("div", "tts-hint", "משפט שלם — לאט");
         slowBtn.onclick = () => {
           if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
@@ -874,11 +1049,17 @@
           row.dataset.speaker = turn.speaker || "";
           row.appendChild(el("div", "dialogue-summary-index", String(index + 1)));
           row.appendChild(markTarget(el("div", "dialogue-summary-target", turn.ru || "")));
+          const rowTl = sentenceTlEl(turn.ru, "dialogue-summary-tl");
+          if (rowTl) row.appendChild(rowTl);
           const he = dialogueTranslation(turn);
           if (he) row.appendChild(el("div", "dialogue-summary-he", he));
           summary.appendChild(row);
         });
         card.appendChild(summary);
+        setTimeout(() => {
+          syncFbSpace();
+          try { summary.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+        }, 320);
       }
 
       card.appendChild(el("div", "ex-prompt", "השלם את השיחה — בחר את השורה הבאה"));
@@ -893,6 +1074,8 @@
           const t = turns[i];
           if (i < step || (i === step && t.speaker !== "user")) {
             const b = markTarget(el("div", "bubble " + (t.speaker === "user" ? "b" : "a"), escapeHtml(t.ru)));
+            const bTl = sentenceTlEl(t.ru, "bubble-tl");
+            if (bTl) b.appendChild(bTl);
             thread.appendChild(b);
           } else if (i === step && t.speaker === "user") {
             thread.appendChild(el("div", "bubble b pending", "…"));

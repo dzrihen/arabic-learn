@@ -990,3 +990,24 @@ button { cursor: pointer; border: none; background: none; color: inherit; }
   .match-item.ru-side { font-size: 1.15rem; padding: 8px 6px; }
   .chip { padding: 6px 10px; }
 }
+
+/* Hebrew transliteration lines + fading */
+.he-tl-line { font-family: var(--font); font-size: 0.8rem; color: #8b93a1; direction: rtl; unicode-bidi: isolate; text-align: right; margin-top: 3px; line-height: 1.35; }
+.bubble .he-tl-line { font-size: 0.74rem; opacity: 0.9; }
+.reveal-tl, .heard-reveal .he-tl-line { text-align: center; font-size: 0.95rem; }
+.tl-hidden { color: #c3c8d0; cursor: pointer; letter-spacing: 1px; }
+.tl-reveal-btn, .translit.tl-tap { font-size: 0.75rem; color: var(--blue, #1d6fe0); background: none; border: none; padding: 0; cursor: pointer; }
+.heard-reveal { margin: 10px 0 4px; padding: 10px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
+.tl-select { font-size: 0.95rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); }
+/* Tips */
+.tip-card { text-align: right; direction: rtl; background: #fff8e6; border: 1px solid #f3d38a; border-radius: 14px; padding: 12px 14px; margin: 14px 0 6px; }
+.tip-card .tip-kicker { font-size: 0.75rem; color: #a66b00; font-weight: 800; margin-bottom: 4px; }
+.tip-card .tip-title { font-weight: 900; font-size: 1.02rem; margin-bottom: 4px; }
+.tip-card .tip-body { font-size: 0.92rem; line-height: 1.5; }
+.tip-card .tip-ex { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #f0d9a0; }
+.tip-card .tip-ex-t { font-family: var(--ru); font-size: 1.05rem; }
+.tip-card .tip-ex-tl { font-size: 0.8rem; color: #8b93a1; }
+.tip-card .tip-ex-he { font-size: 0.85rem; }
+.celeb .tip-card { max-width: 420px; margin-left: auto; margin-right: auto; }
+.reveal-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.reveal-row .btn { flex: 1 1 140px; }

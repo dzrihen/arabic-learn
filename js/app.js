@@ -269,10 +269,16 @@
       srsHomeCard() +
       grammarHomeCard() +
       '<div class="card"><h2>הגדרות</h2>' +
-      '<div class="toggle-row"><span>תעתיק (לטינית)</span>' +
-      '<button type="button" class="toggle' +
-      (p.settings.translit ? " on" : "") +
-      '" id="tog-translit" aria-label="תעתיק"></button></div>' +
+      '<div class="toggle-row"><span>תעתיק בעברית</span>' +
+      '<select id="sel-translit" class="tl-select" aria-label="תעתיק">' +
+      [["auto", "אוטומטי"], ["always", "תמיד"], ["never", "אף פעם"]]
+        .map(function (o) {
+          const cur = p.settings.translitMode || (p.settings.translit === false ? "never" : "auto");
+          return '<option value="' + o[0] + '"' + (cur === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
+        })
+        .join("") +
+      "</select></div>" +
+      '<p class="sub" style="color:var(--muted);font-size:0.78rem;margin:-4px 0 8px">אוטומטי: מלא בהתחלה, בהמשך רק למילים חדשות, ובשלבים מתקדמים בהקשה.</p>' +
       '<div class="toggle-row"><span>צליל TTS</span>' +
       '<button type="button" class="toggle' +
       (p.settings.sound !== false ? " on" : "") +
@@ -299,10 +305,9 @@
     if (bl) bl.onclick = () => navigate("levels");
     const bp = qs("#btn-path");
     if (bp) bp.onclick = () => navigate("path");
-    qs("#tog-translit").onclick = function () {
-      const on = !RLProgress.get().settings.translit;
-      RLProgress.setSetting("translit", on);
-      this.classList.toggle("on", on);
+    qs("#sel-translit").onchange = function () {
+      RLProgress.setSetting("translitMode", this.value);
+      RLProgress.setSetting("translit", this.value !== "never");
     };
     qs("#tog-sound").onclick = function () {
       const on = RLProgress.get().settings.sound === false;
@@ -1094,10 +1099,17 @@
       (mistakes
         ? '<p class="sub" style="color:var(--muted)">טעויות: ' + mistakes + " — מצוין שהמשכת!</p>"
         : "") +
+      '<div id="celeb-tip"></div>' +
       '<button type="button" class="btn btn-primary" id="btn-next-les">השיעור הבא</button>' +
       '<button type="button" class="btn btn-ghost" id="btn-to-path" style="margin-top:8px">חזרה למסלול</button>' +
       "</div>";
 
+    if (window.RLTips && lesson && lesson.level !== "GRAM") {
+      RLTips.pick(lesson).then((tip) => {
+        const slot = qs("#celeb-tip");
+        if (tip && slot) slot.appendChild(RLTips.cardEl(tip, "טיפ לסיום השיעור"));
+      }).catch(() => {});
+    }
     qs("#btn-to-path").onclick = () => {
       window.__RL_LESSON_ACTIVE = false;
       navigate(lesson.level === "GRAM" ? "grammar" : "path");
