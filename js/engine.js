@@ -323,6 +323,96 @@
     return copy;
   }
 
+  // ---- Coherent dialogue bank (data/dialogues.js → window.RL_DIALOGUES) ----
+  const DLG_LV = ["A1", "A2", "B1", "B2", "C1", "C2"];
+  const DLG_THEMES = {
+    cafe: /קפה|מסעד|אוכל|ארוח|הזמנ|מטבח|מאכל|שתי/, shop: /קני|חנות|שוק|מחיר|בגד|כסף|קנייה/,
+    family: /משפח|הורים|ילדים|יום הולדת/, directions: /כיוונ|עיר|תחבור|דרך|מקום|רחוב/,
+    time: /שעה|זמן|שעון|ימי|תאריך/, phone: /טלפון|שיחת/, weather: /מזג|אוויר|עונ/,
+    travel: /נסיע|טיול|מלון|תייר|חופש|טיס|רכב/, study: /לימוד|ספר לימוד|בית ספר|אוניבר|מבחנ|שפה/,
+    work: /עבוד|מקצוע|משרד|קריירה|עסק/, health: /בריא|רופא|גוף|מחל|רפוא/,
+    apartment: /דיר|שכנ|דיור/, home: /בית|אורח|שגרה/, errands: /בנק|דואר|סידור|שירות/,
+    society: /חברה|חדשות|פוליטי|דיון|דעה|טכנולוג|סביב/, culture: /תרבות|ספרות|אמנות|מוזיק|קולנוע|זיכרו/,
+    meet: /היכר|ברכ|חבר|בילוי|פנאי|שלום|נימוס/
+  };
+  function dlgHash(s) { let h = 5381; s = String(s || ""); for (let i = 0; i < s.length; i++) h = (((h << 5) + h) ^ s.charCodeAt(i)) >>> 0; return h; }
+  function dlgBankAll() { return Array.isArray(global.RL_DIALOGUES) ? global.RL_DIALOGUES : []; }
+  function dlgLevelOf(lesson) {
+    const m = String((lesson && lesson.id) || "").match(/^(a1|a2|b1|b2|c1|c2)/i);
+    const lv = (m ? m[1] : String((lesson && lesson.level) || "A1")).toUpperCase();
+    return DLG_LV.indexOf(lv) >= 0 ? lv : "A1";
+  }
+  function dlgPool(lv) {
+    const b = dlgBankAll(); let i = DLG_LV.indexOf(lv); if (i < 0) i = 0;
+    for (let d = 0; d < 6; d++) {
+      const out = b.filter((x) => { const j = DLG_LV.indexOf(x.lv); return Math.abs(j - i) <= d; });
+      if (out.length >= 6) return out;
+    }
+    return b.slice();
+  }
+  function dlgThemeOf(lesson) {
+    const t = String((lesson && lesson.titleHe) || "");
+    for (const k in DLG_THEMES) if (DLG_THEMES[k].test(t)) return k;
+    return "";
+  }
+  // Courtesy lines that occur in 2+ scenarios ("Thanks a lot!") could fit anywhere → never used as wrong options
+  let dlgSharedCache = null;
+  function dlgSharedLines() {
+    if (dlgSharedCache) return dlgSharedCache;
+    const seen = {}, shared = {};
+    dlgBankAll().forEach((d) => d.turns.forEach((t) => { if (seen[t.ru] && seen[t.ru] !== d.id) shared[t.ru] = 1; seen[t.ru] = d.id; }));
+    return (dlgSharedCache = shared);
+  }
+  // Plausible-but-wrong lines: same level, same speaker role, different scenario, similar length.
+  function dlgDistractors(d, i, pool, n) {
+    const own = {}; d.turns.forEach((t) => { own[t.ru] = 1; });
+    const want = String(d.turns[i].ru).length;
+    const cands = [];
+    const shared = dlgSharedLines();
+    pool.forEach((o) => {
+      if (o.id === d.id || o.theme === d.theme) return;
+      o.turns.forEach((t, j) => { if (j % 2 === i % 2 && !own[t.ru] && !shared[t.ru] && cands.indexOf(t.ru) < 0) cands.push(t.ru); });
+    });
+    cands.sort((a, b) => Math.abs(a.length - want) - Math.abs(b.length - want));
+    return shuffle(cands.slice(0, 12)).slice(0, n);
+  }
+  function dlgExercise(d, pool) {
+    return {
+      type: "dialogue", _bank: d.id, _lv: d.lv, _theme: d.theme,
+      turns: d.turns.map((t, i) => ({ speaker: i % 2 ? "user" : "npc", ru: t.ru, he: t.he, distractors: i % 2 ? dlgDistractors(d, i, pool, 3) : [] })),
+      distractors: []
+    };
+  }
+  function applyDialogueBank(lesson, list) {
+    if (!dlgBankAll().length) return list;
+    const lv = dlgLevelOf(lesson), pool = dlgPool(lv);
+    const exact = pool.filter((x) => x.lv === lv);
+    const base = exact.length ? exact : pool;
+    const th = dlgThemeOf(lesson);
+    const themed = th ? base.filter((x) => x.theme === th) : [];
+    const order = themed.concat(base.filter((x) => themed.indexOf(x) < 0));
+    const h = dlgHash((lesson && lesson.id) || "");
+    let k = 0;
+    return list.map((ex) => {
+      if (!ex || ex.type !== "dialogue") return ex;
+      let d;
+      if (k < themed.length) d = themed[(h + k) % themed.length];
+      else d = order[(h + k) % order.length];
+      k++;
+      return dlgExercise(d, pool);
+    });
+  }
+  function dlgReplyPick(lesson) {
+    const pool = dlgPool(dlgLevelOf(lesson)); if (!pool.length) return null;
+    const d = pool[Math.floor(Math.random() * pool.length)];
+    if (!d || d.turns.length < 2) return null;
+    const qi = Math.floor(Math.random() * (d.turns.length - 1));
+    const q = d.turns[qi], a = d.turns[qi + 1];
+    const wrong = dlgDistractors(d, qi + 1, pool, 3);
+    if (wrong.length < 2) return null;
+    return { type: "reply_pick", ru: q.ru, he: q.he || "", answer: a.ru, answerHe: a.he || "", options: shuffle([a.ru].concat(wrong)), _bank: d.id, _pair: qi, _gen: 1 };
+  }
+
   function runLesson(lesson, container, callbacks) {
     tlPolicy = policyForLesson(lesson);
     if (global.RLTips) RLTips.load();
@@ -331,6 +421,7 @@
     let exercises = (lesson.exercises || []).map(function (ex) {
       return Object.assign({}, ex);
     });
+    try { exercises = applyDialogueBank(lesson, exercises); } catch (e) {}
     try {
       if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
       if (lesson._forceType) {
@@ -382,6 +473,24 @@
       const h = feedback.getBoundingClientRect().height;
       stage.style.paddingBottom = Math.ceil(h + 16) + "px";
     }
+    // Scroll so the answer options (and the picked one) stay visible above the feedback panel
+    function keepChoicesAboveFeedback() {
+      try {
+        if (!feedback.classList.contains("show")) return;
+        const box = stage.querySelector(".choices");
+        if (!box) return;
+        const fbTop = feedback.getBoundingClientRect().top;
+        const over = box.getBoundingClientRect().bottom + 8 - fbTop;
+        if (over <= 0) return;
+        let sc = box.parentElement;
+        while (sc && sc !== document.body) {
+          const cs = getComputedStyle(sc);
+          if (/(auto|scroll)/.test(cs.overflowY) && sc.scrollHeight > sc.clientHeight) break;
+          sc = sc.parentElement;
+        }
+        if (sc && sc !== document.body) sc.scrollTop += over; else global.scrollBy(0, over);
+      } catch (e) {}
+    }
     try {
       if (global.ResizeObserver) new ResizeObserver(syncFbSpace).observe(feedback);
     } catch (e) {}
@@ -410,7 +519,8 @@
       const btn = feedback.querySelector(".fb-next");
       btn.textContent = ok ? "המשך" : "ננסה שוב / המשך";
       syncFbSpace();
-      requestAnimationFrame(syncFbSpace);
+      requestAnimationFrame(() => { syncFbSpace(); keepChoicesAboveFeedback(); });
+      setTimeout(keepChoicesAboveFeedback, 260);
       // SRS Easy button
       let easy = feedback.querySelector(".fb-easy");
       const ex = exercises[idx];
@@ -748,7 +858,7 @@
       const out = list.slice();
       picks.forEach((i, k) => {
         let kind = kinds[k % kinds.length];
-        if (kind === "reply_pick" && !dialogs.length) kind = "he_pick";
+        if (kind === "reply_pick" && !dlgBankAll().length) kind = "he_pick";
         const made = buildNewType(kind, pool, dialogs);
         if (made) out[i] = made;
       });
@@ -788,20 +898,7 @@
         if (distract.length < 2) return null;
         return { type: "missing_word", ru: s.ru, he: s.he, tokens: toks, gap: gi, answer: answer, options: shuffle([answer].concat(distract)), _gen: 1 };
       }
-      if (kind === "reply_pick") {
-        const d = dialogs[Math.floor(Math.random() * dialogs.length)];
-        const pairs = [];
-        for (let i = 0; i + 1 < d.turns.length; i++) {
-          if (d.turns[i].speaker !== "user" && d.turns[i + 1].speaker === "user") pairs.push(i);
-        }
-        if (!pairs.length) return null;
-        const qi = pairs[Math.floor(Math.random() * pairs.length)];
-        const q = d.turns[qi], a = d.turns[qi + 1];
-        const wrong = shuffle((d.distractors || []).filter((x) => x && x !== a.ru)).slice(0, 2);
-        otherItems(pool, a.ru, 4).forEach((o) => { if (wrong.length < 3 && o.ru !== q.ru && wrong.indexOf(o.ru) < 0) wrong.push(o.ru); });
-        if (wrong.length < 2) return null;
-        return { type: "reply_pick", ru: q.ru, he: q.he || "", answer: a.ru, answerHe: a.he || "", options: shuffle([a.ru].concat(wrong)), _gen: 1 };
-      }
+      if (kind === "reply_pick") return dlgReplyPick(lesson);
       return null;
     }
 
@@ -1362,7 +1459,7 @@
         const correct = turns[step];
         const opts = shuffle(
           [{ ru: correct.ru, ok: true }].concat(
-            (ex.distractors || []).slice(0, 3).map((d) => ({ ru: d, ok: false }))
+            ((correct.distractors && correct.distractors.length ? correct.distractors : ex.distractors) || []).slice(0, 3).map((d) => ({ ru: d, ok: false }))
           )
         );
         opts.forEach((o) => {
@@ -1644,5 +1741,5 @@
     };
   }
 
-  global.RLEngine = { runLesson, shuffle };
+  global.RLEngine = { runLesson, shuffle, _dlg: { applyDialogueBank, dlgReplyPick, dlgLevelOf, dlgThemeOf } };
 })(window);
