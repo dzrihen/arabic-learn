@@ -85,8 +85,12 @@ def speak_repeat(ru, he=None, translit=None, tip=None):
     if tip: ex["tip"] = tip
     return ex
 
-def dialogue(turns, distractors, tip=None):
-    ex = {"type": "dialogue", "turns": turns, "distractors": distractors}
+def dialogue(turns=None, distractors=None, tip=None):
+    """Emit a slot for a coherent dialogue from data/dialogues.js (hand-written, single scenario).
+    Never string lesson phrase rows together into a "conversation" — that produced random,
+    unrelated lines. The engine (applyDialogueBank) fills this slot by level/theme at runtime;
+    any turns passed here are intentionally discarded."""
+    ex = {"type": "dialogue", "fromBank": True, "turns": [], "distractors": []}
     if tip: ex["tip"] = tip
     return ex
 
