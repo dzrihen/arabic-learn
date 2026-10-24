@@ -373,8 +373,11 @@
       if (o.id === d.id || o.theme === d.theme) return;
       o.turns.forEach((t, j) => { if (j % 2 === i % 2 && !own[t.ru] && !shared[t.ru] && cands.indexOf(t.ru) < 0) cands.push(t.ru); });
     });
-    cands.sort((a, b) => Math.abs(a.length - want) - Math.abs(b.length - want));
-    return shuffle(cands.slice(0, 12)).slice(0, n);
+    const capOk = cands.filter((c) => rampWords(c) <= ramp.cap);
+    const covOk = capOk.filter((c) => rampCoverage(c) >= Math.max(0, ramp.minCov - 0.15));
+    const use = covOk.length >= n ? covOk : capOk.length >= n ? capOk : cands;
+    use.sort((a, b) => Math.abs(a.length - want) - Math.abs(b.length - want));
+    return shuffle(use.slice(0, 12)).slice(0, n);
   }
   function dlgExercise(d, pool) {
     return {
@@ -385,9 +388,18 @@
   }
   function applyDialogueBank(lesson, list) {
     if (!dlgBankAll().length) return list;
-    const lv = dlgLevelOf(lesson), pool = dlgPool(lv);
+    if (ramp.dlg === "none") return list; // early stages: rampGate swaps dialogues for easy drills
+    const lv = dlgLevelOf(lesson), pool = rampBankPool(lv);
     const exact = pool.filter((x) => x.lv === lv);
-    const base = exact.length ? exact : pool;
+    let base = (exact.length ? exact : pool).map(rampFitDialogue).filter(Boolean);
+    const roomy = base.filter((d) => d.turns.length >= Math.min(ramp.dlgTurns, 4));
+    if (roomy.length >= 3) base = roomy;
+    if (rampKnownSet && base.length) {
+      const scored = base.map((d) => ({ d: d, c: rampCoverage(d.turns.map((t) => t.ru).join(" ")) }));
+      const good = scored.filter((x) => x.c >= ramp.minCov);
+      base = (good.length >= 3 ? good : scored.sort((a, b) => b.c - a.c).slice(0, 8)).map((x) => x.d);
+    }
+    if (!base.length) return list;
     const th = dlgThemeOf(lesson);
     const themed = th ? base.filter((x) => x.theme === th) : [];
     const order = themed.concat(base.filter((x) => themed.indexOf(x) < 0));
@@ -403,14 +415,283 @@
     });
   }
   function dlgReplyPick(lesson) {
-    const pool = dlgPool(dlgLevelOf(lesson)); if (!pool.length) return null;
-    const d = pool[Math.floor(Math.random() * pool.length)];
-    if (!d || d.turns.length < 2) return null;
-    const qi = Math.floor(Math.random() * (d.turns.length - 1));
+    const pool = rampBankPool(dlgLevelOf(lesson)); if (!pool.length) return null;
+    const pairs = [];
+    pool.forEach((d) => d.turns.forEach((t, qi) => {
+      if (qi >= d.turns.length - 1 || qi >= ramp.dlgTurns) return;
+      const a = d.turns[qi + 1];
+      if (rampWords(t.ru) > ramp.cap || rampWords(a.ru) > ramp.cap) return;
+      pairs.push({ d: d, qi: qi, c: Math.min(rampCoverage(t.ru), rampCoverage(a.ru)) });
+    }));
+    if (!pairs.length) return null;
+    // early stages: a real question → answer reads most naturally
+    const isQ = (p) => /[;?؟]\s*$/.test(p.d.turns[p.qi].ru);
+    const qs = ramp.stage <= 3 ? pairs.filter(isQ) : [];
+    const base = qs.length >= 6 ? qs : pairs;
+    const good = base.filter((p) => p.c >= ramp.minCov);
+    const cand = good.length >= 3 ? good : base.sort((a, b) => b.c - a.c).slice(0, 10);
+    const pk = cand[Math.floor(Math.random() * cand.length)];
+    const d = pk.d, qi = pk.qi;
     const q = d.turns[qi], a = d.turns[qi + 1];
     const wrong = dlgDistractors(d, qi + 1, pool, 3);
     if (wrong.length < 2) return null;
     return { type: "reply_pick", ru: q.ru, he: q.he || "", answer: a.ru, answerHe: a.he || "", options: shuffle([a.ru].concat(wrong)), _bank: d.id, _pair: qi, _gen: 1 };
+  }
+
+
+  // ---- Gradual difficulty ramp (v31) — see /workspace/_fix/gradual_ramp.md ----
+  // Stage is chosen by the lesson's position inside its level (unit ids are not sequential).
+  const RAMP_ALL_NEW = ["true_false", "he_pick", "missing_word", "reply_pick"];
+  const RAMP_TABLE = [
+    { stage: 0, lv: "A1", upto: 40, cap: 4, listenCap: 4, newTypes: [], maxNew: 0, dlg: "none", dlgTurns: 0, minCov: 1 },
+    { stage: 1, lv: "A1", upto: 100, cap: 5, listenCap: 5, newTypes: ["he_pick", "true_false"], maxNew: 1, dlg: "none", dlgTurns: 0, minCov: 1 },
+    { stage: 2, lv: "A1", upto: 200, cap: 5, listenCap: 5, newTypes: ["he_pick", "true_false", "missing_word", "reply_pick"], maxNew: 2, dlg: "short", dlgTurns: 4, minCov: 0.6 },
+    { stage: 3, lv: "A1", upto: 1e9, cap: 7, listenCap: 6, newTypes: RAMP_ALL_NEW, maxNew: 3, dlg: "full", dlgTurns: 99, minCov: 0.5 },
+    { stage: 4, lv: "A2", upto: 1e9, cap: 10, listenCap: 8, newTypes: RAMP_ALL_NEW, maxNew: 4, dlg: "full", dlgTurns: 99, minCov: 0 },
+    { stage: 5, lv: "*", upto: 1e9, cap: 1e9, listenCap: 1e9, newTypes: RAMP_ALL_NEW, maxNew: 4, dlg: "full", dlgTurns: 99, minCov: 0 }
+  ];
+  let ramp = RAMP_TABLE[5];
+  let rampKnownSet = null;
+  let rampLvIdx = 5;
+  let curLesson = null;
+  function rampWords(s) { return String(s || "").split(/\s+/).filter((w) => /\p{L}/u.test(w)).length; }
+  function rampNorm(w) {
+    return String(w || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ς/g, "σ").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[\u064A\u0649]/g, "\u06CC").replace(/\u0643/g, "\u06A9").replace(/[\u0622\u0623\u0625]/g, "\u0627").replace(/[^\p{L}]/gu, "");
+  }
+  function rampPosition(lesson) {
+    const C = global.RLCurriculum;
+    const id = String((lesson && lesson.id) || "");
+    const m = id.match(/^(a1|a2|b1|b2|c1|c2)-/i);
+    if (m && C && C.lessonIdsForLevel) {
+      const lv = m[1].toUpperCase();
+      const ids = C.lessonIdsForLevel(lv) || [];
+      const i = ids.indexOf(id);
+      if (i >= 0) return { lv: lv, ord: i + 1, ids: ids };
+      return { lv: lv, ord: 1e9, ids: [] };
+    }
+    // review / grammar lessons: use the learner's real position
+    let lv = "A1", ord = 1, ids = [];
+    try { lv = String(RLProgress.get().currentLevel || "A1").toUpperCase(); } catch (e) {}
+    try { ids = C.lessonIdsForLevel(lv) || []; ord = Math.max(1, C.completedCountForLevel(lv) || 1); } catch (e) {}
+    return { lv: lv, ord: ord, ids: ids };
+  }
+  function rampFor(pos) {
+    if (pos.lv === "A1") return RAMP_TABLE.find((r) => r.lv === "A1" && pos.ord <= r.upto) || RAMP_TABLE[3];
+    if (pos.lv === "A2") return RAMP_TABLE[4];
+    return RAMP_TABLE[5];
+  }
+  function rampAddKnown(set, txt) {
+    String(txt || "").split(/\s+/).forEach((w) => {
+      const n = rampNorm(w);
+      if (!n) return;
+      set[n] = 1;
+      if (n.length >= 4) set["~" + n.slice(0, 4)] = 1;
+    });
+  }
+  // Words the learner has met: every target-language string in this level up to (and incl.) this lesson.
+  function rampBuildKnown(pos) {
+    if (ramp.stage > 3) return null;
+    const C = global.RLCurriculum, set = {};
+    (pos.ids || []).slice(0, pos.ord).forEach((id) => {
+      const l = C && C.getLesson ? C.getLesson(id) : null;
+      if (!l) return;
+      (l.exercises || []).forEach((ex) => {
+        if (!ex) return;
+        [ex.ru, ex.sentence, ex.answer, ex.example, ex.letter].forEach((t) => rampAddKnown(set, t));
+        (ex.words || []).forEach((t) => rampAddKnown(set, t));
+        (ex.pairs || []).forEach((p) => p && rampAddKnown(set, p.ru));
+        (ex.turns || []).forEach((p) => p && rampAddKnown(set, p.ru));
+        (ex.options || []).forEach((p) => p && rampAddKnown(set, typeof p === "string" ? p : p.ru));
+        (ex.letters || []).forEach((p) => p && rampAddKnown(set, p.example));
+      });
+    });
+    return Object.keys(set).length ? set : null;
+  }
+  function rampCoverage(text) {
+    if (!rampKnownSet) return 1;
+    const toks = String(text || "").split(/\s+/).map(rampNorm).filter(Boolean);
+    if (!toks.length) return 1;
+    let k = 0;
+    toks.forEach((n) => { if (rampKnownSet[n] || (n.length >= 4 && rampKnownSet["~" + n.slice(0, 4)])) k++; });
+    return k / toks.length;
+  }
+  function rampLineOk(s, cov) { return rampWords(s) <= ramp.cap && rampCoverage(s) >= cov; }
+  function rampSetup(lesson) {
+    curLesson = lesson;
+    let pos = { lv: "A1", ord: 1e9, ids: [] };
+    try { pos = rampPosition(lesson); } catch (e) {}
+    ramp = rampFor(pos);
+    rampLvIdx = Math.max(0, DLG_LV.indexOf(pos.lv));
+    if (rampLvIdx < 0) rampLvIdx = 0;
+    try { rampKnownSet = rampBuildKnown(pos); } catch (e) { rampKnownSet = null; }
+    return { pos: pos, ramp: ramp };
+  }
+  // Same level or easier only.
+  function rampBankPool(lv) {
+    const pool = dlgPool(lv);
+    const cap = Math.max(rampLvIdx, DLG_LV.indexOf(lv));
+    const easy = pool.filter((x) => DLG_LV.indexOf(x.lv) <= cap);
+    return easy.length >= 6 ? easy : pool;
+  }
+  // Trim a bank dialogue to the stage's limits; null if it can't fit.
+  function rampFitDialogue(d) {
+    let turns = d.turns.slice(0, ramp.dlgTurns);
+    let cut = turns.findIndex((t) => rampWords(t.ru) > ramp.cap);
+    if (cut >= 0) turns = turns.slice(0, cut);
+    if (turns.length % 2) turns = turns.slice(0, turns.length - 1);
+    if (turns.length < 2) return null;
+    return Object.assign({}, d, { turns: turns });
+  }
+
+  // ——— New exercise types (generated from the lesson's own sentences) ———
+  // true_false · reply_pick · missing_word · he_pick — mixed in by replacing a few
+  // existing items so lessons don't get longer. Which kinds / how many depends on the ramp stage.
+  function lessonSentencePool(list) {
+    const out = [];
+    const seen = {};
+    const add = (ru, he) => {
+      ru = String(ru || "").trim();
+      he = String(he || "").trim();
+      if (!ru || !he || seen[ru]) return;
+      seen[ru] = 1;
+      out.push({ ru: ru, he: he });
+    };
+    (list || []).forEach((ex) => {
+      if (!ex) return;
+      if (ex.ru && ex.he) add(ex.ru, ex.he);
+      if (ex.ru && Array.isArray(ex.choices)) {
+        const c = ex.choices.find((x) => x && x.correct);
+        if (c && c.he) add(ex.ru, c.he);
+      }
+      (ex.pairs || []).forEach((p) => p && add(p.ru, p.he));
+      (ex.turns || []).forEach((t) => t && add(t.ru, t.he));
+    });
+    return out;
+  }
+
+  function mixNewTypes(list) {
+    if (!ramp.maxNew || !ramp.newTypes.length) return list;
+    const pool = lessonSentencePool(list).filter((p) => rampWords(p.ru) <= ramp.cap);
+    if (pool.length < 4 || list.length < 6) return list;
+    const replaceable = [];
+    list.forEach((ex, i) => {
+      if (i === 0 || !ex) return;
+      if (/^(read_choice|listen_choice|translate_he_ru|sentence_build|match_pairs)$/.test(ex.type)) replaceable.push(i);
+    });
+    // ~1 in 4 exercises, capped per stage
+    const n = Math.min(ramp.maxNew, Math.max(1, Math.round(list.length / 4)), replaceable.length);
+    const picks = shuffle(replaceable.slice()).slice(0, n).sort((a, b) => a - b);
+    const dialogs = list.filter((e) => e && e.type === "dialogue" && Array.isArray(e.turns) && e.turns.length >= 2);
+    const kinds = shuffle(ramp.newTypes.slice());
+    const out = list.slice();
+    picks.forEach((i, k) => {
+      let kind = kinds[k % kinds.length];
+      if (kind === "reply_pick" && !dlgBankAll().length) kind = "he_pick";
+      const made = buildNewType(kind, pool, dialogs);
+      if (made) out[i] = made;
+    });
+    return out;
+  }
+
+  function otherItems(pool, notRu, count) {
+    return shuffle(pool.filter((p) => p.ru !== notRu)).slice(0, count);
+  }
+
+  function buildNewType(kind, pool, dialogs) {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!pick) return null;
+    if (kind === "true_false") {
+      const truth = Math.random() < 0.5;
+      const wrong = otherItems(pool, pick.ru, 1)[0];
+      if (!truth && !wrong) return null;
+      return { type: "true_false", ru: pick.ru, he: truth ? pick.he : wrong.he, correctHe: pick.he, truth: truth, _gen: 1 };
+    }
+    if (kind === "he_pick") {
+      const others = otherItems(pool, pick.ru, 3);
+      if (others.length < 2) return null;
+      return { type: "he_pick", ru: pick.ru, he: pick.he, options: shuffle([pick.ru].concat(others.map((o) => o.ru))), _gen: 1 };
+    }
+    if (kind === "missing_word") {
+      const cands = pool.filter((p) => p.ru.split(/\s+/).length >= 3);
+      const s = cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
+      if (!s) return null;
+      const toks = s.ru.split(/\s+/);
+      const core = (w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+      const idxs = toks.map((w, i) => i).filter((i) => core(toks[i]).length >= 2);
+      if (!idxs.length) return null;
+      const gi = idxs[Math.floor(Math.random() * idxs.length)];
+      const answer = core(toks[gi]);
+      const bag = {};
+      pool.forEach((p) => p.ru.split(/\s+/).forEach((w) => { const c = core(w); if (c.length >= 2 && c.toLowerCase() !== answer.toLowerCase()) bag[c] = 1; }));
+      const distract = shuffle(Object.keys(bag)).slice(0, 3);
+      if (distract.length < 2) return null;
+      return { type: "missing_word", ru: s.ru, he: s.he, tokens: toks, gap: gi, answer: answer, options: shuffle([answer].concat(distract)), _gen: 1 };
+    }
+    if (kind === "reply_pick") return dlgReplyPick(curLesson);
+    return null;
+  }
+
+  // Easy stand-ins (match pairs / read-and-pick-meaning) built from the lesson's short sentences.
+  function rampFiller(short, k) {
+    if (!short || short.length < 3) return null;
+    if (k % 2 === 0) {
+      const seenHe = {};
+      const ps = shuffle(short.slice()).filter((p) => (seenHe[p.he] ? false : (seenHe[p.he] = 1))).slice(0, 4);
+      if (ps.length >= 3) return { type: "match_pairs", pairs: ps, _gen: 1, _ramp: 1 };
+    }
+    const p = short[Math.floor(Math.random() * short.length)];
+    const others = shuffle(short.filter((o) => o.he !== p.he)).slice(0, 3);
+    if (others.length < 2) return null;
+    return { type: "read_choice", ru: p.ru, choices: [{ he: p.he, correct: true }].concat(others.map((o) => ({ he: o.he, correct: false }))), _gen: 1, _ramp: 1 };
+  }
+
+  // Early stages: no stitched dialogues, no long sentences, listen-and-build only for very short ones.
+  function rampGate(list) {
+    if (ramp.stage > 3) return list;
+    // A few early lessons are built only from longer sentences: relax the cap one word at a time
+    // (never above 8) instead of giving up, so dialogues/new types still stay out.
+    for (let cap = ramp.cap; cap <= Math.max(ramp.cap, 8); cap++) {
+      const out = rampGateCap(list, cap);
+      if (out.length >= Math.min(6, list.length) && out._kept >= Math.ceil(list.length / 2)) return out;
+    }
+    return list.filter((ex) => ex && ex.type !== "dialogue");
+  }
+  function rampGateCap(list, cap) {
+    const short = lessonSentencePool(list).filter((p) => rampWords(p.ru) <= cap);
+    const out = [];
+    let fillers = 0;
+    list.forEach((ex) => {
+      if (!ex) return;
+      const t = ex.type;
+      if (t === "alphabet") { out.push(ex); return; }
+      if (t === "match_pairs") {
+        const ps = (ex.pairs || []).filter((p) => p && rampWords(p.ru) <= cap);
+        if (ps.length >= 3) out.push(ps.length === (ex.pairs || []).length ? ex : Object.assign({}, ex, { pairs: ps.slice(0, 5) }));
+        else { const f = rampFiller(short, fillers++); if (f) out.push(f); }
+        return;
+      }
+      if (t === "dialogue") {
+        if (ramp.dlg === "none" || !ex._bank) { const f = rampFiller(short, fillers++); if (f) out.push(f); }
+        else out.push(ex);
+        return;
+      }
+      const n = rampWords(ex.ru || ex.sentence || (ex.words || []).join(" "));
+      if (n > cap) { const f = rampFiller(short, fillers++); if (f) out.push(f); return; }
+      if (t === "listen_order" && n > ramp.listenCap) { out.push(alternateForListening(ex)); return; }
+      out.push(ex);
+    });
+    out._kept = out.filter((e) => !e._ramp).length;
+    return out;
+  }
+
+  /** Full preprocessing used by runLesson (exposed for node simulations). */
+  function prepareExercises(lesson) {
+    let exercises = (lesson.exercises || []).map((ex) => Object.assign({}, ex));
+    rampSetup(lesson);
+    exercises = applyDialogueBank(lesson, exercises);
+    exercises = rampGate(exercises);
+    if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
+    return exercises;
   }
 
   function runLesson(lesson, container, callbacks) {
@@ -421,7 +702,9 @@
     let exercises = (lesson.exercises || []).map(function (ex) {
       return Object.assign({}, ex);
     });
+    try { rampSetup(lesson); } catch (e) {}
     try { exercises = applyDialogueBank(lesson, exercises); } catch (e) {}
+    try { exercises = rampGate(exercises); } catch (e) {}
     try {
       if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
       if (lesson._forceType) {
@@ -816,91 +1099,7 @@
 
     // ——— Exercise renderers ———
 
-    // ——— New exercise types (generated from the lesson's own sentences) ———
-    // true_false · reply_pick · missing_word · he_pick — mixed in by replacing a few
-    // existing items so lessons don't get longer.
-    function lessonSentencePool(list) {
-      const out = [];
-      const seen = {};
-      const add = (ru, he) => {
-        ru = String(ru || "").trim();
-        he = String(he || "").trim();
-        if (!ru || !he || seen[ru]) return;
-        seen[ru] = 1;
-        out.push({ ru: ru, he: he });
-      };
-      (list || []).forEach((ex) => {
-        if (!ex) return;
-        if (ex.ru && ex.he) add(ex.ru, ex.he);
-        if (ex.ru && Array.isArray(ex.choices)) {
-          const c = ex.choices.find((x) => x && x.correct);
-          if (c && c.he) add(ex.ru, c.he);
-        }
-        (ex.pairs || []).forEach((p) => p && add(p.ru, p.he));
-        (ex.turns || []).forEach((t) => t && add(t.ru, t.he));
-      });
-      return out;
-    }
-
-    function mixNewTypes(list) {
-      const pool = lessonSentencePool(list);
-      if (pool.length < 4 || list.length < 6) return list;
-      const replaceable = [];
-      list.forEach((ex, i) => {
-        if (i === 0 || !ex) return;
-        if (/^(read_choice|listen_choice|translate_he_ru|sentence_build|match_pairs)$/.test(ex.type)) replaceable.push(i);
-      });
-      // ~1 in 4 exercises, at most 4 per lesson
-      const n = Math.min(4, Math.max(1, Math.round(list.length / 4)), replaceable.length);
-      const picks = shuffle(replaceable.slice()).slice(0, n).sort((a, b) => a - b);
-      const dialogs = list.filter((e) => e && e.type === "dialogue" && Array.isArray(e.turns) && e.turns.length >= 2);
-      const kinds = shuffle(["true_false", "reply_pick", "missing_word", "he_pick"]);
-      const out = list.slice();
-      picks.forEach((i, k) => {
-        let kind = kinds[k % kinds.length];
-        if (kind === "reply_pick" && !dlgBankAll().length) kind = "he_pick";
-        const made = buildNewType(kind, pool, dialogs);
-        if (made) out[i] = made;
-      });
-      return out;
-    }
-
-    function otherItems(pool, notRu, count) {
-      return shuffle(pool.filter((p) => p.ru !== notRu)).slice(0, count);
-    }
-
-    function buildNewType(kind, pool, dialogs) {
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      if (kind === "true_false") {
-        const truth = Math.random() < 0.5;
-        const wrong = otherItems(pool, pick.ru, 1)[0];
-        if (!truth && !wrong) return null;
-        return { type: "true_false", ru: pick.ru, he: truth ? pick.he : wrong.he, correctHe: pick.he, truth: truth, _gen: 1 };
-      }
-      if (kind === "he_pick") {
-        const others = otherItems(pool, pick.ru, 3);
-        if (others.length < 2) return null;
-        return { type: "he_pick", ru: pick.ru, he: pick.he, options: shuffle([pick.ru].concat(others.map((o) => o.ru))), _gen: 1 };
-      }
-      if (kind === "missing_word") {
-        const cands = pool.filter((p) => p.ru.split(/\s+/).length >= 3);
-        const s = cands.length ? cands[Math.floor(Math.random() * cands.length)] : null;
-        if (!s) return null;
-        const toks = s.ru.split(/\s+/);
-        const core = (w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
-        const idxs = toks.map((w, i) => i).filter((i) => core(toks[i]).length >= 2);
-        if (!idxs.length) return null;
-        const gi = idxs[Math.floor(Math.random() * idxs.length)];
-        const answer = core(toks[gi]);
-        const bag = {};
-        pool.forEach((p) => p.ru.split(/\s+/).forEach((w) => { const c = core(w); if (c.length >= 2 && c.toLowerCase() !== answer.toLowerCase()) bag[c] = 1; }));
-        const distract = shuffle(Object.keys(bag)).slice(0, 3);
-        if (distract.length < 2) return null;
-        return { type: "missing_word", ru: s.ru, he: s.he, tokens: toks, gap: gi, answer: answer, options: shuffle([answer].concat(distract)), _gen: 1 };
-      }
-      if (kind === "reply_pick") return dlgReplyPick(lesson);
-      return null;
-    }
+    // New-type generators + ramp gate live at module level (prepareExercises).
 
     function targetOptionButton(text, onPick) {
       const b = markTarget(el("button", "choice ru", escapeHtml(text)));
@@ -1741,5 +1940,5 @@
     };
   }
 
-  global.RLEngine = { runLesson, shuffle, _dlg: { applyDialogueBank, dlgReplyPick, dlgLevelOf, dlgThemeOf } };
+  global.RLEngine = { runLesson, shuffle, prepareExercises, RAMP_TABLE, _ramp: () => ramp, _dlg: { applyDialogueBank, dlgReplyPick, dlgLevelOf, dlgThemeOf } };
 })(window);
