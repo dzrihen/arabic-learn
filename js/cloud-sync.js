@@ -101,8 +101,8 @@
 
   function srsRichness(s) {
     if (!s || typeof s !== "object") return 0;
-    const cards = s.cards && typeof s.cards === "object" ? Object.keys(s.cards).length : 0;
-    return cards;
+    const n = (o) => (o && typeof o === "object" ? Object.keys(o).length : 0);
+    return n(s.cards) + n(s.items) + n(s.mistakes);
   }
 
   function collectBundle() {

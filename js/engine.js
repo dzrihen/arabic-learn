@@ -305,6 +305,11 @@
   /** Convert one listening-primary exercise to a non-listening equivalent (shallow copy). */
   function alternateForListening(ex) {
     const copy = Object.assign({}, ex);
+    if (copy.type === "speak_check") { // speak_check silent alt
+      const w = String(copy.ru || "").split(/\s+/).filter(Boolean);
+      if (w.length >= 2) { copy.type = "sentence_build"; copy.words = w; copy.promptHe = copy.he || "בנה את המשפט"; }
+      return copy;
+    }
     if (copy.type === "listen_order") {
       copy.type = "sentence_build";
       copy.words =
@@ -460,7 +465,7 @@
   }
   function rampPosition(lesson) {
     const C = global.RLCurriculum;
-    const id = String((lesson && lesson.id) || "");
+    const id = String((lesson && (lesson._rampOf || lesson.id)) || "");
     const m = id.match(/^(a1|a2|b1|b2|c1|c2)-/i);
     if (m && C && C.lessonIdsForLevel) {
       const lv = m[1].toUpperCase();
@@ -690,7 +695,8 @@
     rampSetup(lesson);
     exercises = applyDialogueBank(lesson, exercises);
     exercises = rampGate(exercises);
-    if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
+    if (!/^(SRS|GRAM|TEST)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
+    if (global.RLPractice && RLPractice.augment) exercises = RLPractice.augment(lesson, exercises, ramp);
     return exercises;
   }
 
@@ -706,12 +712,14 @@
     try { exercises = applyDialogueBank(lesson, exercises); } catch (e) {}
     try { exercises = rampGate(exercises); } catch (e) {}
     try {
-      if (!/^(SRS|GRAM)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
+      if (!/^(SRS|GRAM|TEST)$/.test(String(lesson.level || ""))) exercises = mixNewTypes(exercises);
       if (lesson._forceType) {
         const forced = buildNewType(lesson._forceType, lessonSentencePool(exercises), exercises.filter((e) => e && e.type === "dialogue"));
         if (forced) exercises[0] = forced;
       }
     } catch (e) {}
+    // SRS-due / mistake items + speaking check mixed into regular lessons (js/practice.js)
+    try { if (global.RLPractice && RLPractice.augment) exercises = RLPractice.augment(lesson, exercises, ramp); } catch (e) {}
     let idx = 0;
     let mistakes = 0;
     let hearts = 5;
@@ -816,7 +824,7 @@
           feedback.appendChild(easy);
         }
         easy.style.display = "";
-        easy.textContent = "קליל (Easy) → מרווח ארוך יותר";
+        easy.textContent = "קליל → מרווח ארוך יותר";
         easy.onclick = () => {
           try {
             RLSrs.review(ex._srsLemma, "easy");
@@ -850,7 +858,7 @@
         }
         return;
       }
-      if (!tipShown && exercises.length >= 6 && idx === Math.floor(exercises.length / 2) && global.RLTips) {
+      if (!tipShown && exercises.length >= 6 && idx === Math.floor(exercises.length / 2) && !lesson._test && global.RLTips) {
         tipShown = true;
         RLTips.pick(lesson).then((tip) => {
           if (!tip) return render();
@@ -873,11 +881,13 @@
     }
 
     function failAndMaybeRetry(detail, retryFn) {
+      if (lesson._test) retryFn = null; // checkpoint test: one attempt per item
+      try { if (callbacks.onResult && exercises[idx]) callbacks.onResult(exercises[idx], false); } catch (e) {}
       mistakes++;
       hearts = Math.max(0, hearts - 1);
       updateHearts();
       try {
-        if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], false);
+        if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], false, lesson);
         // SRS review grade again
         if (exercises[idx] && exercises[idx]._srsLemma && global.RLSrs) {
           RLSrs.review(exercises[idx]._srsLemma, "again");
@@ -920,7 +930,8 @@
         if (cx) tlBump(String(cx.ru || (cx.words || []).join(" ") || "").split(/\s+/));
       } catch (e) {}
       try {
-        if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], true);
+        if (global.RLSrs && exercises[idx]) RLSrs.trackExerciseResult(exercises[idx], true, lesson);
+        if (callbacks.onResult && exercises[idx]) callbacks.onResult(exercises[idx], !exercises[idx]._hadMiss);
       } catch (e) {}
       const exNow = exercises[idx];
       showFeedback(true, successDetail(exNow, detail), () => {
@@ -947,6 +958,7 @@
       if (ex.tip) {
         card.appendChild(el("div", "ex-tip", "💡 " + ex.tip));
       }
+      if (ex._rev) card.appendChild(el("div", "rev-badge" + (ex._rev === "mistake" ? " mistake" : ""), ex._rev === "mistake" ? "📌 מהטעויות שלך" : "🔁 חזרה"));
 
       const type = ex.type;
       if (type === "listen_choice") renderListenChoice(card, ex);
@@ -961,6 +973,11 @@
       else if (type === "reply_pick") renderReplyPick(card, ex);
       else if (type === "fill_blank") renderFillBlank(card, ex);
       else if (type === "match_pairs") renderMatch(card, ex);
+      else if (type === "speak_check" && global.RLPractice) RLPractice.renderSpeakCheck(card, ex, {
+        succeed: succeed, fail: (d) => failAndMaybeRetry(d, null), skip: () => { if (!busy) advance(); }, alt: skipToAlternate,
+        isBusy: () => busy, ttsButton: ttsButton, autoPlay: scheduleAutoPlay, sentenceTl: sentenceTlEl, markTarget: markTarget,
+        targetText: targetText, el: el, escapeHtml: escapeHtml,
+      });
       else if (type === "speak_repeat") renderSpeak(card, ex);
       else if (type === "alphabet") renderAlphabet(card, ex);
       else {
@@ -970,7 +987,7 @@
         card.appendChild(b);
       }
       // Every exercise with a play button gets the same row: slow · reveal · skip
-      if (type !== "alphabet" && type !== "dialogue" && card.querySelector(".tts-replay")) appendSkipAltButton(card);
+      if (type !== "alphabet" && type !== "dialogue" && type !== "speak_check" && card.querySelector(".tts-replay")) appendSkipAltButton(card);
     }
 
     function ttsButton(text, showText, label) {
@@ -1039,7 +1056,7 @@
         if (ru && he && others.length >= 2) alt = { type: "he_pick", ru: ru, he: he, options: shuffle([ru].concat(others)), _gen: 1 };
         else {
           const a2 = alternateForListening(cur);
-          if (a2.type === "read_choice") alt = a2;
+          if (a2.type === "read_choice" || (cur.type === "speak_check" && a2.type === "sentence_build")) alt = a2;
         }
       }
       if (!alt) { advance(); return; } // nothing silent to swap in → just move on (no penalty)
@@ -1775,6 +1792,8 @@
           } else {
             a.classList.add("mismatch");
             b.classList.add("mismatch");
+            ex._hadMiss = true;
+            try { const ruB = a.dataset.side === "ru" ? a : b; if (global.RLSrs && RLSrs.noteMismatch) RLSrs.noteMismatch(pairs[+ruB.dataset.id], ex); } catch (e) {}
             busy = true;
             setTimeout(() => {
               a.classList.remove("selected", "mismatch");
@@ -1940,5 +1959,5 @@
     };
   }
 
-  global.RLEngine = { runLesson, shuffle, prepareExercises, RAMP_TABLE, _ramp: () => ramp, _dlg: { applyDialogueBank, dlgReplyPick, dlgLevelOf, dlgThemeOf } };
+  global.RLEngine = { rampOf: function (l) { try { return rampFor(rampPosition(l || {})); } catch (e) { return RAMP_TABLE[5]; } }, runLesson, shuffle, prepareExercises, RAMP_TABLE, _ramp: () => ramp, _dlg: { applyDialogueBank, dlgReplyPick, dlgLevelOf, dlgThemeOf } };
 })(window);
