@@ -112,8 +112,42 @@
     );
   }
 
+  // Toasts never cover lesson/feedback buttons: shown only when no lesson is running (nav visible), at the top.
+  function rlToastSafe() {
+    try {
+      if (window.__RL_LESSON_ACTIVE) return false;
+      if (document.getElementById("lesson-root")) return false;
+      if (document.querySelector(".feedback.show")) return false;
+      const nav = document.querySelector(".bottom-nav, nav");
+      if (nav && (nav.classList.contains("hidden") || nav.hidden)) return false;
+    } catch (e) {}
+    return true;
+  }
+  function rlToastDefer(fn, arg) {
+    fn._pending = arg;
+    if (fn._w) return;
+    fn._w = setInterval(function () {
+      if (!rlToastSafe()) return;
+      clearInterval(fn._w); fn._w = 0;
+      const a = fn._pending; fn._pending = null;
+      fn(a);
+    }, 1500);
+  }
+  function rlToastGuard() {
+    if (rlToastGuard._w) return;
+    rlToastGuard._w = setInterval(function () {
+      if (rlToastSafe()) return;
+      const pt = document.getElementById("rl-progress-toast"); if (pt) pt.hidden = true;
+      const ct = document.getElementById("rl-cloud-backup-toast");
+      if (ct && !ct.hidden) { ct.hidden = true; if (showCloudBackupToast._last) rlToastDefer(showCloudBackupToast, showCloudBackupToast._last); }
+    }, 700);
+  }
+  const RL_TOAST_POS = "position:fixed;top:calc(env(safe-area-inset-top, 0px) + 10px);left:12px;right:12px;";
+
   function showProgressToast(msg) {
     if (!msg) return;
+    if (!rlToastSafe()) return rlToastDefer(showProgressToast, msg);
+    rlToastGuard();
     try {
       let el = document.getElementById("rl-progress-toast");
       if (!el) {
@@ -121,7 +155,7 @@
         el.id = "rl-progress-toast";
         el.setAttribute("role", "status");
         el.style.cssText =
-          "position:fixed;bottom:84px;left:12px;right:12px;z-index:9999;background:#1CB0F6;color:#fff;padding:12px 14px;border-radius:12px;font-weight:700;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.2)";
+          RL_TOAST_POS + "pointer-events:none;z-index:9999;background:#1CB0F6;color:#fff;padding:12px 14px;border-radius:12px;font-weight:700;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.2)";
         document.body.appendChild(el);
       }
       el.textContent = msg;
@@ -136,6 +170,9 @@
 
   function showCloudBackupToast(notice) {
     if (!notice || !notice.code) return;
+    if (!rlToastSafe()) return rlToastDefer(showCloudBackupToast, notice);
+    rlToastGuard();
+    showCloudBackupToast._last = notice;
     try {
       let el = document.getElementById("rl-cloud-backup-toast");
       if (!el) {
@@ -143,7 +180,7 @@
         el.id = "rl-cloud-backup-toast";
         el.setAttribute("role", "status");
         el.style.cssText =
-          "position:fixed;bottom:84px;left:12px;right:12px;z-index:10000;background:#58CC02;color:#fff;padding:14px 14px 12px;border-radius:14px;font-weight:700;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25);line-height:1.45";
+          RL_TOAST_POS + "z-index:10000;background:#58CC02;color:#fff;padding:14px 14px 12px;border-radius:14px;font-weight:700;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.25);line-height:1.45";
         document.body.appendChild(el);
       }
       const code = String(notice.code);
@@ -160,6 +197,7 @@
       const dismissBtn = el.querySelector("#rl-cloud-toast-dismiss");
       function hide() {
         el.hidden = true;
+        showCloudBackupToast._last = null;
       }
       if (copyBtn) {
         copyBtn.onclick = async function () {
@@ -174,7 +212,7 @@
         };
       }
       if (dismissBtn) dismissBtn.onclick = hide;
-      showCloudBackupToast._t = setTimeout(hide, 20000);
+      showCloudBackupToast._t = setTimeout(hide, 12000);
     } catch (e) {}
   }
 
