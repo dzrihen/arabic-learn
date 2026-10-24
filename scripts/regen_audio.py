@@ -58,7 +58,7 @@ def data_texts():
     """Texts the app can speak: sentences (ru/model/pairs/turns/choices, completed fill_blank) and word chips."""
     sents, words = set(), set()
     def add(s, chip=False):
-        if not isinstance(s, str) or not SCRIPT.search(s) or re.search(r"[\u0590-\u05ff]", s): return
+        if not isinstance(s, str) or not re.search(r"[\u0621-\u064a\u067e-\u06d3]", s) or re.search(r"[\u0590-\u05ff]", s): return
         s = s.strip()
         (words if (chip or len(s.split()) == 1) else sents).add(s)
     def walk(o):
