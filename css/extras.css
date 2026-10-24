@@ -1,0 +1,52 @@
+/* Stories + free chat (js/stories.js, js/chat.js) */
+.hidden { display: none !important; }
+.st-wrap, .ch-wrap { padding: 12px 14px calc(24px + var(--safe-bottom, 0px)); max-width: 720px; margin: 0 auto; }
+.st-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.st-lv { font-size: 0.8rem; color: var(--muted); }
+.st-title { font-size: 1.4rem; margin: 4px 0 0; }
+.st-title-he { color: var(--muted); margin-bottom: 8px; }
+.st-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.st-lines { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.st-line { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; transition: background .2s, border-color .2s; }
+.st-line.playing { background: var(--primary-soft, #e0f2fe); border-color: var(--primary, #1CB0F6); }
+.st-ctrl { display: flex; flex-direction: column; gap: 4px; }
+.st-play, .st-slow, .ch-say, .ch-mic { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: #fff; font-size: 1.05rem; cursor: pointer; }
+.st-body { flex: 1; min-width: 0; }
+.st-t { font-size: 1.2rem; line-height: 1.6; }
+.st-he { margin-top: 4px; color: #374151; font-size: 0.95rem; }
+.st-he-btn { background: none; border: none; color: var(--blue, #1d6fe0); font-size: 0.8rem; padding: 2px 0; cursor: pointer; }
+.st-weak { text-decoration: underline wavy #f59e0b; text-underline-offset: 4px; }
+.st-weak-note { font-size: 0.8rem; }
+.st-qcard h2 { margin: 6px 0 10px; font-size: 1.1rem; }
+.st-opt { display: block; width: 100%; margin: 6px 0; text-align: right; }
+.st-opt.correct { border-color: #16a34a; background: #dcfce7; }
+.st-opt.wrong { border-color: var(--danger); background: var(--danger-soft); }
+.st-ok { color: #16a34a; font-weight: 600; margin: 8px 0; }
+.st-bad { color: var(--danger); font-weight: 600; margin: 8px 0; }
+.st-done { text-align: center; } .st-done .big { font-size: 2.6rem; }
+.st-lvh { margin: 14px 0 6px; font-size: 1rem; color: var(--muted); }
+.st-item { display: flex; width: 100%; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; margin: 6px 0; text-align: right; cursor: pointer; font: inherit; color: inherit; }
+.st-item.locked { opacity: 0.55; cursor: default; }
+.st-ico { font-size: 1.2rem; }
+.st-it { display: flex; flex-direction: column; gap: 2px; }
+.st-it .sub { font-size: 0.8rem; color: var(--muted); }
+.ch-title { font-size: 1.25rem; margin: 4px 0; }
+.ch-tog { display: flex; gap: 16px; margin: 8px 0; font-size: 0.9rem; }
+.ch-log { display: flex; flex-direction: column; gap: 10px; min-height: 180px; margin: 10px 0; }
+.ch-b { max-width: 88%; border-radius: 16px; padding: 10px 12px; }
+.ch-b.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+.ch-b.me { align-self: flex-end; background: var(--primary-soft, #e0f2fe); }
+.ch-row { display: flex; gap: 8px; align-items: flex-start; }
+.ch-t { font-size: 1.1rem; line-height: 1.55; flex: 1; }
+.ch-he { margin-top: 4px; color: #374151; font-size: 0.92rem; }
+.ch-fix { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #d1d5db; font-size: 0.88rem; color: #92400e; }
+.ch-corr { color: #166534; margin-top: 2px; }
+.ch-note { align-self: center; font-size: 0.85rem; color: var(--muted); text-align: center; }
+.ch-note.err { color: var(--danger); } .ch-note.ok { color: #16a34a; }
+.ch-dots { letter-spacing: 3px; font-size: 1.3rem; animation: chblink 1s infinite; }
+@keyframes chblink { 50% { opacity: 0.3; } }
+.ch-in { display: flex; gap: 8px; align-items: center; position: sticky; bottom: 8px; background: var(--bg); padding: 6px 0; }
+.ch-text { flex: 1; min-width: 0; height: 46px; border: 1px solid var(--border); border-radius: 12px; padding: 0 12px; font-size: 1.05rem; }
+.ch-send { width: auto; padding: 0 16px; height: 46px; }
+.ch-mic.rec { background: var(--danger-soft); border-color: var(--danger); }
+.ch-home.locked { opacity: 0.85; }
