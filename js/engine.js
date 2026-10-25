@@ -1282,7 +1282,9 @@
         slowBtn.classList.add("playing");
         slowHint.classList.remove("warn");
         slowHint.textContent = "משמיע לאט…";
-        if (mb) mb.classList.remove("pulse");
+        if (mb) mb.classList.remove("pulse", "playing");
+        const mh = main.querySelector(".tts-hint");
+        if (mh) { mh.textContent = ""; mh.classList.remove("warn"); }
         const play = RLSpeech.speakSlow ? RLSpeech.speakSlow(text) : RLSpeech.speak(text, { rate: 0.7 });
         Promise.resolve(play).then((r) => {
           slowBtn.classList.remove("playing");
