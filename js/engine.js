@@ -987,7 +987,7 @@
         card.appendChild(b);
       }
       // Every exercise with a play button gets the same row: slow · reveal · skip
-      if (type !== "alphabet" && type !== "dialogue" && type !== "speak_check" && card.querySelector(".tts-replay")) appendSkipAltButton(card);
+      if (type !== "alphabet" && type !== "dialogue" && type !== "speak_check" && type !== "read_choice" && card.querySelector(".tts-replay")) appendSkipAltButton(card);
     }
 
     function ttsButton(text, showText, label) {
@@ -1259,6 +1259,44 @@
     }
 
 
+    /** Always-available listen (🔊) + slow (🐢) for text-shown recognition MCQs. No autoplay (reading exercise / silent alternate). */
+    function appendListenRow(card, text) {
+      text = String(text || "").trim();
+      if (!text) return;
+      const row = el("div", "tts-helper-row rc-listen-row");
+      const main = ttsButton(text, false);
+      const lbl = main.querySelector(".tts-label");
+      if (lbl) lbl.textContent = "השמע";
+      const mb = main.querySelector(".tts-replay");
+      if (mb) { mb.classList.add("rc-listen"); mb.setAttribute("aria-label", "השמע את המשפט"); }
+      row.appendChild(main);
+      const slowWrap = el("div", "tts-wrap tts-slow-wrap");
+      const slowBtn = el("button", "tts-btn tts-slow");
+      slowBtn.type = "button";
+      slowBtn.setAttribute("aria-label", "השמע לאט");
+      slowBtn.innerHTML = '<span class="tts-ico">🐢</span><span class="tts-label">איטי</span>';
+      const slowHint = el("div", "tts-hint", "");
+      slowBtn.onclick = () => {
+        if (RLSpeech.unlockAudio) RLSpeech.unlockAudio();
+        if (RLSpeech.stop) RLSpeech.stop();
+        slowBtn.classList.add("playing");
+        slowHint.classList.remove("warn");
+        slowHint.textContent = "משמיע לאט…";
+        if (mb) mb.classList.remove("pulse");
+        const play = RLSpeech.speakSlow ? RLSpeech.speakSlow(text) : RLSpeech.speak(text, { rate: 0.7 });
+        Promise.resolve(play).then((r) => {
+          slowBtn.classList.remove("playing");
+          if (r && (r.ok || r.cancelled)) slowHint.textContent = "";
+          else { slowHint.textContent = "לא נשמע? לחצו שוב"; slowHint.classList.add("warn"); }
+        });
+      };
+      slowWrap.appendChild(slowBtn);
+      slowWrap.appendChild(slowHint);
+      row.appendChild(slowWrap);
+      card.appendChild(row);
+      if (RLSpeech.preload) { try { RLSpeech.preload(text); } catch (e) {} }
+    }
+
     function renderReadChoice(card, ex) {
       card.appendChild(el("div", "ex-prompt", "מה המשמעות של המשפט?"));
       card.appendChild(markTarget(el("div", "ru-big", escapeHtml(ex.ru))));
@@ -1266,6 +1304,7 @@
         const t = translitLine(ex.translit);
         if (t) card.appendChild(t);
       }
+      appendListenRow(card, ex.ru);
       const choices = shuffle(ex.choices.slice());
       const box = el("div", "choices");
       choices.forEach((c) => {

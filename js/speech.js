@@ -471,7 +471,10 @@
       if (slowPath) {
         return speak(text, Object.assign({}, opts, { audioId: id, rate: opts.rate != null ? opts.rate : 1.0 }));
       }
-      return speak(text, Object.assign({}, opts, { rate: opts.rate != null ? opts.rate : 0.7 }));
+      // Single words resolve to pre-slowed w: clips → play those at 1.0 (no double slowdown)
+      const np = resolvePath(man, text, null);
+      const preSlowed = !!(np && /audio\/w\//.test(np));
+      return speak(text, Object.assign({}, opts, { rate: opts.rate != null ? opts.rate : (preSlowed ? 1.0 : 0.7) }));
     });
   }
 

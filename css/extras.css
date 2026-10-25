@@ -50,3 +50,10 @@
 .ch-send { width: auto; padding: 0 16px; height: 46px; }
 .ch-mic.rec { background: var(--danger-soft); border-color: var(--danger); }
 .ch-home.locked { opacity: 0.85; }
+
+/* read_choice: always-visible listen + slow row */
+.rc-listen-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:4px 0 12px}
+.rc-listen-row .tts-wrap{margin:0}
+.rc-listen-row .tts-btn{min-width:130px;min-height:52px;font-size:1.02rem}
+.rc-listen-row .tts-btn.tts-slow{background:#fff7ed;border-color:#fb923c;color:#c2410c}
+@media (max-width:360px){.rc-listen-row .tts-btn{min-width:110px;padding:10px 12px;font-size:.95rem}}
